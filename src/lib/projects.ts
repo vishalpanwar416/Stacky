@@ -11,7 +11,7 @@ import {
   orderBy,
   serverTimestamp,
 } from 'firebase/firestore'
-import { db } from './firebase'
+import { getDb } from './firebase'
 import type { Project } from '../types'
 
 const PROJECTS = 'projects'
@@ -19,7 +19,7 @@ const PROJECTS = 'projects'
 export async function createProject(
   data: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<string> {
-  const ref = await addDoc(collection(db, PROJECTS), {
+  const ref = await addDoc(collection(getDb(), PROJECTS), {
     ...data,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -28,14 +28,14 @@ export async function createProject(
 }
 
 export async function getProject(id: string): Promise<Project | null> {
-  const snap = await getDoc(doc(db, PROJECTS, id))
+  const snap = await getDoc(doc(getDb(), PROJECTS, id))
   if (!snap.exists()) return null
   return { id: snap.id, ...snap.data() } as Project
 }
 
 export async function getProjectsByWorkspace(workspaceId: string): Promise<Project[]> {
   const q = query(
-    collection(db, PROJECTS),
+    collection(getDb(), PROJECTS),
     where('workspaceId', '==', workspaceId),
     orderBy('updatedAt', 'desc')
   )
@@ -47,12 +47,12 @@ export async function updateProject(
   id: string,
   data: Partial<Pick<Project, 'name' | 'description' | 'status' | 'health'>>
 ) {
-  await updateDoc(doc(db, PROJECTS, id), {
+  await updateDoc(doc(getDb(), PROJECTS, id), {
     ...data,
     updatedAt: serverTimestamp(),
   })
 }
 
 export async function deleteProject(id: string) {
-  await deleteDoc(doc(db, PROJECTS, id))
+  await deleteDoc(doc(getDb(), PROJECTS, id))
 }

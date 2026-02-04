@@ -12,9 +12,9 @@ import {
   limit,
   serverTimestamp,
   onSnapshot,
-  Unsubscribe,
 } from 'firebase/firestore'
-import { db } from './firebase'
+import type { Unsubscribe } from 'firebase/firestore'
+import { getDb } from './firebase'
 import type { Task, TaskStatus, TaskComment, TaskActivity, TaskActivityAction } from '../types'
 
 const TASKS = 'tasks'
@@ -33,7 +33,7 @@ export async function createTask(
   createdBy: string
 ): Promise<string> {
   const assignees = data.assignees ?? defaultAssignees(createdBy)
-  const ref = await addDoc(collection(db, TASKS), {
+  const ref = await addDoc(collection(getDb(), TASKS), {
     ...data,
     assignees: { ownerId: assignees.ownerId, watcherIds: assignees.watcherIds ?? [] },
     createdBy,
@@ -45,7 +45,7 @@ export async function createTask(
 }
 
 export async function getTask(id: string): Promise<Task | null> {
-  const snap = await getDoc(doc(db, TASKS, id))
+  const snap = await getDoc(doc(getDb(), TASKS, id))
   if (!snap.exists()) return null
   return { id: snap.id, ...snap.data() } as Task
 }
@@ -55,13 +55,13 @@ export async function getTasksByWorkspace(
   opts?: { status?: TaskStatus; projectId?: string; ownerId?: string }
 ): Promise<Task[]> {
   let q = query(
-    collection(db, TASKS),
+    collection(getDb(), TASKS),
     where('workspaceId', '==', workspaceId),
     orderBy('updatedAt', 'desc')
   )
   if (opts?.status) {
     q = query(
-      collection(db, TASKS),
+      collection(getDb(), TASKS),
       where('workspaceId', '==', workspaceId),
       where('status', '==', opts.status),
       orderBy('updatedAt', 'desc')
@@ -69,7 +69,7 @@ export async function getTasksByWorkspace(
   }
   if (opts?.projectId) {
     q = query(
-      collection(db, TASKS),
+      collection(getDb(), TASKS),
       where('workspaceId', '==', workspaceId),
       where('projectId', '==', opts.projectId),
       orderBy('updatedAt', 'desc')
@@ -77,7 +77,7 @@ export async function getTasksByWorkspace(
   }
   if (opts?.ownerId) {
     q = query(
-      collection(db, TASKS),
+      collection(getDb(), TASKS),
       where('workspaceId', '==', workspaceId),
       where('assignees.ownerId', '==', opts.ownerId),
       orderBy('updatedAt', 'desc')
@@ -92,7 +92,7 @@ export function subscribeTasksByWorkspace(
   callback: (tasks: Task[]) => void
 ): Unsubscribe {
   const q = query(
-    collection(db, TASKS),
+    collection(getDb(), TASKS),
     where('workspaceId', '==', workspaceId),
     orderBy('updatedAt', 'desc')
   )
@@ -106,7 +106,7 @@ export async function updateTask(
   data: Partial<Pick<Task, 'title' | 'description' | 'status' | 'priority' | 'dueDate' | 'dueTime' | 'estimatedMinutes' | 'reminderAt' | 'tags' | 'completionNote' | 'blockedReason' | 'blockedByTaskId'>>,
   userId: string
 ) {
-  const ref = doc(db, TASKS, id)
+  const ref = doc(getDb(), TASKS, id)
   const prev = await getDoc(ref)
   const prevData = prev.data()
   const updates: Record<string, unknown> = { ...data, updatedAt: serverTimestamp() }
@@ -134,7 +134,7 @@ export async function assignTask(
   watcherIds: string[],
   userId: string
 ) {
-  const ref = doc(db, TASKS, taskId)
+  const ref = doc(getDb(), TASKS, taskId)
   await updateDoc(ref, {
     'assignees.ownerId': ownerId,
     'assignees.watcherIds': watcherIds,
@@ -144,7 +144,7 @@ export async function assignTask(
 }
 
 export async function deleteTask(id: string) {
-  await deleteDoc(doc(db, TASKS, id))
+  await deleteDoc(doc(getDb(), TASKS, id))
 }
 
 async function logActivity(
@@ -153,7 +153,7 @@ async function logActivity(
   action: TaskActivityAction,
   payload?: Record<string, unknown>
 ) {
-  await addDoc(collection(db, TASKS, taskId, ACTIVITY), {
+  await addDoc(collection(getDb(), TASKS, taskId, ACTIVITY), {
     userId,
     action,
     payload: payload ?? null,
@@ -168,7 +168,7 @@ export async function addComment(
   displayName?: string,
   mentions?: string[]
 ) {
-  const ref = await addDoc(collection(db, TASKS, taskId, COMMENTS), {
+  const ref = await addDoc(collection(getDb(), TASKS, taskId, COMMENTS), {
     userId,
     displayName: displayName ?? null,
     body,
@@ -182,7 +182,7 @@ export async function addComment(
 
 export function subscribeComments(taskId: string, callback: (comments: TaskComment[]) => void): Unsubscribe {
   const q = query(
-    collection(db, TASKS, taskId, COMMENTS),
+    collection(getDb(), TASKS, taskId, COMMENTS),
     orderBy('createdAt', 'asc')
   )
   return onSnapshot(q, (snap) => {
@@ -192,7 +192,7 @@ export function subscribeComments(taskId: string, callback: (comments: TaskComme
 
 export function subscribeActivity(taskId: string, callback: (items: TaskActivity[]) => void): Unsubscribe {
   const q = query(
-    collection(db, TASKS, taskId, ACTIVITY),
+    collection(getDb(), TASKS, taskId, ACTIVITY),
     orderBy('createdAt', 'desc'),
     limit(50)
   )
@@ -203,7 +203,7 @@ export function subscribeActivity(taskId: string, callback: (items: TaskActivity
 
 export function subscribeTasksSharedWithMe(userId: string, callback: (tasks: Task[]) => void): Unsubscribe {
   const q = query(
-    collection(db, TASKS),
+    collection(getDb(), TASKS),
     where('assignees.ownerId', '==', userId),
     orderBy('updatedAt', 'desc')
   )

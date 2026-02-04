@@ -16,6 +16,7 @@ dist-ssr
 server/serviceAccountKey.json
 **/serviceAccountKey.json
 *firebase-adminsdk*.json
+.firebase/
 
 # Editor directories and files
 .vscode/*
@@ -27,3 +28,4 @@ server/serviceAccountKey.json
 *.njsproj
 *.sln
 *.sw?
+.vercel
