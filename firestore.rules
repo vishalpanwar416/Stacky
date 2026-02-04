@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function getWorkspaceMember(workspaceId) {
+      return get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data != null;
+    }
+
+    function isWorkspaceMember(workspaceId) {
+      return isSignedIn() && (
+        get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid
+        || getWorkspaceMember(workspaceId)
+      );
+    }
+
+    function isTaskAssignee(task) {
+      let assignees = task.data.assignees;
+      return assignees != null && (
+        assignees.ownerId == request.auth.uid
+        || (assignees.watcherIds != null && request.auth.uid in assignees.watcherIds)
+      );
+    }
+
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    match /workspaces/{workspaceId} {
+      allow read: if isSignedIn() && (
+        resource.data.ownerId == request.auth.uid
+        || getWorkspaceMember(workspaceId)
+      );
+      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+
+      match /members/{memberId} {
+        allow read: if isWorkspaceMember(workspaceId);
+        allow write: if isSignedIn() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
+      }
+    }
+
+    match /projects/{projectId} {
+      allow read, write: if isSignedIn() && isWorkspaceMember(resource.data.workspaceId);
+      allow create: if isSignedIn() && isWorkspaceMember(request.resource.data.workspaceId);
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isSignedIn() && (
+        isWorkspaceMember(resource.data.workspaceId)
+        || isTaskAssignee(resource)
+      );
+      allow create: if isSignedIn() && isWorkspaceMember(request.resource.data.workspaceId);
+      allow update: if isSignedIn() && (
+        isWorkspaceMember(resource.data.workspaceId)
+        || isTaskAssignee(resource)
+      );
+      allow delete: if isSignedIn() && isWorkspaceMember(resource.data.workspaceId);
+    }
+
+    match /tasks/{taskId}/comments/{commentId} {
+      allow read: if isSignedIn() && isWorkspaceMember(get(/databases/$(database)/documents/tasks/$(taskId)).data.workspaceId);
+      allow create: if isSignedIn() && isWorkspaceMember(get(/databases/$(database)/documents/tasks/$(taskId)).data.workspaceId);
+      allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /tasks/{taskId}/activity/{activityId} {
+      allow read: if isSignedIn() && isWorkspaceMember(get(/databases/$(database)/documents/tasks/$(taskId)).data.workspaceId);
+      allow create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /task_dependencies/{depId} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}
