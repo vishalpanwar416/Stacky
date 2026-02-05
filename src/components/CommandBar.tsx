@@ -12,7 +12,7 @@ interface CommandBarProps {
 
 export function CommandBar({ currentWorkspace, userId, onClose, onNavigate }: CommandBarProps) {
   const [query, setQuery] = useState('')
-  const [creating, setCreating] = useState(false)
+  const [, setCreating] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 

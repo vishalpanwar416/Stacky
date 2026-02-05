@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Timestamp } from 'firebase/firestore'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
@@ -18,7 +19,6 @@ import { DashboardSkeleton } from '../components/Skeleton'
 import { DashboardSidebar } from '../components/DashboardSidebar'
 import { WelcomeOverlay } from '../components/WelcomeOverlay'
 import { TaskTimer } from '../components/TaskTimer'
-import { MiniCalendar } from '../components/MiniCalendar'
 import type { Task, Project } from '../types'
 
 const statusOrder: Task['status'][] = ['in_progress', 'blocked', 'planned', 'backlog', 'done']
@@ -103,8 +103,8 @@ function getGreeting(): string {
 
 export function Dashboard() {
   const navigate = useNavigate()
-  const { user, profile, signOut, connectGoogleCalendar } = useAuth()
-  const { showToast } = useToast()
+  const { user, profile, connectGoogleCalendar } = useAuth()
+  const { toast } = useToast()
   const { workspaces, currentWorkspace, setCurrentWorkspaceId, refreshWorkspaces, loading: wsLoading } = useWorkspace()
   const maxInProgress = profile?.preferences?.maxInProgress ?? MAX_IN_PROGRESS
   const [tasks, setTasks] = useState<Task[]>([])
@@ -134,7 +134,6 @@ export function Dashboard() {
       return false
     }
   })
-  const { toast } = useToast()
   const [introShown, setIntroShown] = useState(false)
   const [currentTime, setCurrentTime] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(() => new Date())
@@ -167,7 +166,9 @@ export function Dashboard() {
       const next = !c
       try {
         localStorage.setItem('stacky_sidebar_collapsed', String(next))
-      } catch { }
+      } catch {
+        /* ignore persistence errors */
+      }
       return next
     })
   }
@@ -281,12 +282,13 @@ export function Dashboard() {
   const projectMap = new Map(projects.map((p) => [p.id, p]))
   const calendarDays = buildCalendarDays(calendarMonth)
   const tasksByDate = tasksByProject.reduce((map, t) => {
-    const due =
-      t.dueDate && typeof (t.dueDate as any).toDate === 'function'
-        ? (t.dueDate as any).toDate() as Date
-        : t.dueDate instanceof Date
-          ? t.dueDate
-          : null
+    const rawDue = t.dueDate as unknown
+    let due: Date | null = null
+    if (rawDue && typeof (rawDue as { toDate?: () => Date }).toDate === 'function') {
+      due = (rawDue as { toDate: () => Date }).toDate()
+    } else if (rawDue instanceof Date) {
+      due = rawDue
+    }
     if (!due) return map
     const key = formatDateKey(due)
     if (!map.has(key)) map.set(key, [])
@@ -296,11 +298,13 @@ export function Dashboard() {
   const selectedDateKey = formatDateKey(selectedDate)
   const tasksOnSelectedDate = tasksByDate.get(selectedDateKey) ?? []
 
-  const handleSetWorkspaceId = (id: string) => {
+  const handleSetWorkspaceId = (id: string | null) => {
     setCurrentWorkspaceId(id)
     try {
-      localStorage.setItem('stacky_last_workspace_id', id)
-    } catch { }
+      if (id) localStorage.setItem('stacky_last_workspace_id', id)
+    } catch {
+      /* ignore persistence errors */
+    }
   }
 
   const handleConnectCalendar = async () => {
@@ -308,29 +312,11 @@ export function Dashboard() {
       const credential = await connectGoogleCalendar()
       if (credential?.accessToken) {
         localStorage.setItem('stacky_gcal_token', credential.accessToken)
-        showToast('Connected! Tasks will now sync.', 'success')
+        toast('Connected! Tasks will now sync.', 'success')
       }
     } catch (err) {
       console.error(err)
-      showToast('Failed to connect to Google Calendar', 'error')
-    }
-  }
-
-  const setTaskStatus = async (taskId: string, status: Task['status'], note?: string) => {
-    if (!user) return
-    setUpdatingTaskId(taskId)
-    try {
-      await updateTask(
-        taskId,
-        status === 'done' ? { status, completionNote: note?.trim() || undefined } : { status },
-        user.uid
-      )
-      toast(status === 'done' ? 'Task marked done' : 'Task started', 'success')
-    } catch (err) {
-      console.error(err)
-      toast(err instanceof Error ? err.message : 'Update failed', 'error')
-    } finally {
-      setUpdatingTaskId(null)
+      toast('Failed to connect to Google Calendar', 'error')
     }
   }
 
@@ -515,7 +501,10 @@ export function Dashboard() {
                 }}
               >
                 <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-[var(--color-accent)] to-transparent opacity-80" />
-                <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-accent-muted)]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" pointerEvents="none" />
+                <div
+                  className="absolute inset-0 bg-gradient-to-r from-[var(--color-accent-muted)]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"
+                  style={{ pointerEvents: 'none' }}
+                />
 
                 <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                   <div>
@@ -659,7 +648,7 @@ export function Dashboard() {
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation()
-                                      toggleTaskTimer(t, user?.uid || '')
+                                      toggleTaskTimer(t)
                                     }}
                                     className="rounded-full p-0.5 hover:bg-amber-500/20 active:scale-95 transition-colors"
                                     title={t.timerLastStartedAt ? "Pause timer" : "Resume timer"}
@@ -822,7 +811,7 @@ export function Dashboard() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => updateTask(t.id, { status: 'in_progress', startedAt: serverTimestamp() }, user?.uid || '')}
+                              onClick={() => updateTask(t.id, { status: 'in_progress', startedAt: Timestamp.now() }, user?.uid || '')}
                               disabled={updatingTaskId === t.id || inProgress.length >= maxInProgress}
                               className="rounded-xl theme-surface-bg theme-border border px-3 py-1.5 text-xs font-medium theme-text theme-surface-hover-bg disabled:opacity-50"
                               title={inProgress.length >= maxInProgress ? 'At limit — mark a task done first' : 'Start working'}

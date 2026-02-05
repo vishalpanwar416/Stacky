@@ -55,7 +55,7 @@ export function NewTask() {
       const dueDate = dueDateStr
         ? Timestamp.fromDate(new Date(dueDateStr + 'T' + (dueTimeStr || '00:00:00')))
         : undefined
-      const id = await createTask(
+      await createTask(
         {
           workspaceId: wid,
           projectId: projectId || undefined,

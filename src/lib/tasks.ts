@@ -15,7 +15,6 @@ import {
 } from 'firebase/firestore'
 import type { Unsubscribe } from 'firebase/firestore'
 import { getDb } from './firebase'
-import { getCountdownFromMs, getDueMsFrom, formatDueLabel } from './taskUtils'
 import type { Task, TaskStatus, TaskComment, TaskActivity, TaskActivityAction } from '../types'
 
 const TASKS = 'tasks'
@@ -155,7 +154,7 @@ export async function updateTask(
 }
 
 
-export async function toggleTaskTimer(task: Task, userId: string) {
+export async function toggleTaskTimer(task: Task) {
   const ref = doc(getDb(), TASKS, task.id)
   const now = serverTimestamp()
 

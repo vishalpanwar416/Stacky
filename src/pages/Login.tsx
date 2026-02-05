@@ -100,12 +100,6 @@ function FeatureIcon({ name }: { name: string }) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 12.5l1.5 1.5 3.5-3.5" />
         </svg>
       )
-    case 'calendar':
-      return (
-        <svg className="h-5 w-5 shrink-0 opacity-90" style={style} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-        </svg>
-      )
     default:
       return null
   }
