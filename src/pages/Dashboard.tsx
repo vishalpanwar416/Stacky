@@ -104,7 +104,7 @@ function getGreeting(): string {
 export function Dashboard() {
   const navigate = useNavigate()
   const { user, profile, connectGoogleCalendar } = useAuth()
-  const { toast } = useToast()
+  const { toast: pushToast } = useToast()
   const { workspaces, currentWorkspace, setCurrentWorkspaceId, refreshWorkspaces, loading: wsLoading } = useWorkspace()
   const maxInProgress = profile?.preferences?.maxInProgress ?? MAX_IN_PROGRESS
   const [tasks, setTasks] = useState<Task[]>([])
@@ -312,11 +312,11 @@ export function Dashboard() {
       const credential = await connectGoogleCalendar()
       if (credential?.accessToken) {
         localStorage.setItem('stacky_gcal_token', credential.accessToken)
-        toast('Connected! Tasks will now sync.', 'success')
+        pushToast('Connected! Tasks will now sync.', 'success')
       }
     } catch (err) {
       console.error(err)
-      toast('Failed to connect to Google Calendar', 'error')
+      pushToast('Failed to connect to Google Calendar', 'error')
     }
   }
 
@@ -334,11 +334,11 @@ export function Dashboard() {
         { status: 'done', completionNote: completionNote.trim() || undefined },
         user.uid
       )
-      toast('Task marked done', 'success')
+      pushToast('Task marked done', 'success')
       setCompletingTaskId(null)
       setCompletionNote('')
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Update failed', 'error')
+      pushToast(err instanceof Error ? err.message : 'Update failed', 'error')
     } finally {
       setUpdatingTaskId(null)
     }
@@ -360,9 +360,9 @@ export function Dashboard() {
       setNewProjectOpen(false)
       setNewProjectName('')
       setNewProjectDesc('')
-      toast('Project created', 'success')
+      pushToast('Project created', 'success')
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Failed to create project', 'error')
+      pushToast(err instanceof Error ? err.message : 'Failed to create project', 'error')
     } finally {
       setCreatingProject(false)
     }
@@ -376,10 +376,10 @@ export function Dashboard() {
       await refreshWorkspaces()
       const next = workspaces.filter((w) => w.id !== id)
       handleSetWorkspaceId(next[0]?.id ?? null)
-      toast('Workspace deleted', 'success')
+      pushToast('Workspace deleted', 'success')
     } catch (err) {
       console.error(err)
-      toast(err instanceof Error ? err.message : 'Failed to delete workspace', 'error')
+      pushToast(err instanceof Error ? err.message : 'Failed to delete workspace', 'error')
     } finally {
       setDeletingId(null)
     }
