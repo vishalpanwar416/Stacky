@@ -125,7 +125,7 @@ export function Login() {
   }
 
   return (
-    <div className="theme-page force-dark flex min-h-screen max-h-screen flex-col relative overflow-hidden" style={{ backgroundColor: 'var(--color-bg)' }}>
+    <div className="theme-page force-dark flex min-h-screen flex-col relative overflow-hidden" style={{ backgroundColor: 'var(--color-bg)' }}>
       {/* Background */}
       <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none" aria-hidden>
         <div
@@ -154,7 +154,7 @@ export function Login() {
         />
       </div>
 
-      <main className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_1.1fr] lg:gap-12 xl:gap-14 items-center justify-center w-full max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10 lg:py-12 lg:min-h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-hidden">
+      <main className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_1.1fr] lg:gap-12 xl:gap-14 items-center justify-center w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 lg:py-12 lg:min-h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-auto lg:overflow-visible">
         {/* Hero + CTA (left on lg) */}
         <div className="flex flex-col items-center lg:items-start text-center lg:text-left w-full max-w-xl mx-auto lg:mx-0 animate-stagger">
           <div
@@ -167,7 +167,7 @@ export function Login() {
           >
             <Logo className="w-14 h-14 sm:w-16 sm:h-16" style={{ color: 'var(--color-accent)' }} />
           </div>
-          <h1 className="text-4xl font-bold font-display tracking-tight sm:text-5xl lg:text-5xl xl:text-6xl" style={{ color: 'var(--color-text)' }}>
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold font-display tracking-tight" style={{ color: 'var(--color-text)' }}>
             Stacky
           </h1>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -183,7 +183,7 @@ export function Login() {
           <p className="mx-auto lg:mx-0 mt-4 max-w-md text-base sm:text-lg theme-page-muted">
             Imagine your day as a simple arc: you set the scene, stay in flow, and close the loop. Stacky keeps that story intact—across workspaces, projects, and the calendar—without pulling you out of momentum.
           </p>
-          <div className="mt-8 flex flex-col items-center lg:items-start w-full">
+          <div className="mt-6 sm:mt-8 flex flex-col items-center lg:items-start w-full gap-3">
             {authError && (
               <div className="mb-4 w-full max-w-sm rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
                 <p>{authError}</p>
@@ -195,7 +195,7 @@ export function Login() {
             <button
               type="button"
               onClick={signInWithGoogle}
-              className="rounded-2xl border-2 px-8 py-4 font-semibold text-base transition-all duration-300 hover:scale-[1.03] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-(--color-accent) focus:ring-offset-2 focus:ring-offset-(--color-bg) theme-accent-bg hover:shadow-lg"
+              className="w-full max-w-sm rounded-2xl border-2 px-6 sm:px-8 py-3.5 sm:py-4 font-semibold text-base transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-(--color-accent) focus:ring-offset-2 focus:ring-offset-(--color-bg) theme-accent-bg hover:shadow-lg"
               style={{
                 color: 'var(--color-accent)',
                 borderColor: 'var(--color-accent)',
@@ -204,15 +204,15 @@ export function Login() {
             >
               Sign in with Google
             </button>
-            <p className="mt-4 text-xs theme-page-muted text-center lg:text-left">
+            <p className="mt-2 text-xs theme-page-muted text-center lg:text-left">
               Press <kbd className="rounded border px-1.5 py-0.5 font-mono text-[10px] theme-surface">?</kbd> in the app for all shortcuts.
             </p>
           </div>
         </div>
 
         {/* Feature cards (right on lg) */}
-        <section className="w-full mt-10 lg:mt-0 max-h-[60vh] overflow-auto pr-1">
-          <h2 className="text-sm font-semibold uppercase tracking-wider theme-page-muted mb-6 text-center lg:text-left animate-fade-in">
+        <section className="w-full mt-8 lg:mt-0 max-h-[60vh] overflow-auto lg:overflow-visible pr-1">
+          <h2 className="text-sm font-semibold uppercase tracking-wider theme-page-muted mb-5 text-center lg:text-left animate-fade-in">
             How it helps you
           </h2>
           <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 animate-stagger">
