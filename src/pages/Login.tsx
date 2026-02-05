@@ -5,34 +5,34 @@ import { Skeleton } from '../components/Skeleton'
 
 const features = [
   {
-    title: 'Collaborative workspaces',
-    description: 'Create shared workspaces to work with friends on your new SaaS idea, side projects, or anything else. Add projects inside each so you can focus and filter your dashboard when you need to.',
-    icon: 'folder',
-  },
-  {
-    title: 'Focus with a small queue',
-    description: 'Limit how many tasks are in progress so you don’t get overwhelmed. Set your own cap, pull from the queue when ready, and search or browse history to find anything.',
-    icon: 'list',
-  },
-  {
-    title: 'Move fast with the keyboard',
-    description: 'Add tasks and switch context without the mouse. Quick add with ⌘K, jump between workspaces and projects with shortcuts, and press ? anytime for the full list.',
+    title: 'Morning — set the scene',
+    description: 'You open Stacky, see today’s plan on a calm dark canvas, and drop fresh ideas into the queue with a quick shortcut.',
     icon: 'keyboard',
   },
   {
-    title: 'Work in light or dark',
-    description: 'Switch between light, dark, or system theme so the app fits how and when you work — and is easy on your eyes.',
-    icon: 'palette',
+    title: 'Afternoon — stay in flow',
+    description: 'A tiny in‑progress limit keeps you focused while the calendar view shows what’s due next. Timers quietly track the real story of your work.',
+    icon: 'calendar',
   },
   {
-    title: 'Collaborate on tasks',
-    description: 'Add watchers to tasks, leave comments, and see activity so you and your friends stay in sync — no extra tools or meetings needed.',
+    title: 'Evening — share the win',
+    description: 'Mark tasks done, add a note, and let the workspace history tell the team what shipped today.',
     icon: 'people',
   },
   {
-    title: 'See what’s next',
-    description: 'Prioritize with P0–P3, move tasks from backlog to in progress to done, and link blocked tasks so you know what’s waiting on what.',
+    title: 'Calendar, not chaos',
+    description: 'Sync Google Calendar and schedule tasks by day so your work and events live on one timeline.',
     icon: 'flag',
+  },
+  {
+    title: 'Offline still counts',
+    description: 'Keep working on the plane or with spotty Wi‑Fi—your updates sync the moment you’re back.',
+    icon: 'cloud',
+  },
+  {
+    title: 'Privacy-first by default',
+    description: 'Firebase Auth + Firestore rules keep data locked down; nothing is shared unless you invite it.',
+    icon: 'shield',
   },
 ]
 
@@ -75,6 +75,37 @@ function FeatureIcon({ name }: { name: string }) {
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 3 3 3h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
         </svg>
       )
+    case 'calendar':
+      return (
+        <svg className="h-5 w-5 shrink-0 opacity-90" style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+          <rect x="3" y="5" width="18" height="16" rx="3" />
+          <path d="M3 10h18" />
+          <path d="M8 3v4" />
+          <path d="M16 3v4" />
+          <circle cx="9" cy="14" r="1" />
+          <circle cx="13" cy="14" r="1" />
+          <circle cx="17" cy="14" r="1" />
+        </svg>
+      )
+    case 'cloud':
+      return (
+        <svg className="h-5 w-5 shrink-0 opacity-90" style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18h11a4 4 0 100-8 6 6 0 10-11.31 3.5" />
+        </svg>
+      )
+    case 'shield':
+      return (
+        <svg className="h-5 w-5 shrink-0 opacity-90" style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l7 4v5c0 4.5-3.5 7.5-7 9-3.5-1.5-7-4.5-7-9V7l7-4z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 12.5l1.5 1.5 3.5-3.5" />
+        </svg>
+      )
+    case 'calendar':
+      return (
+        <svg className="h-5 w-5 shrink-0 opacity-90" style={style} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      )
     default:
       return null
   }
@@ -100,36 +131,36 @@ export function Login() {
   }
 
   return (
-    <div className="theme-page flex min-h-screen flex-col relative overflow-x-hidden">
+    <div className="theme-page force-dark flex min-h-screen max-h-screen flex-col relative overflow-hidden" style={{ backgroundColor: 'var(--color-bg)' }}>
       {/* Background */}
       <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none" aria-hidden>
         <div
-          className="absolute inset-0 opacity-[0.85]"
+          className="absolute inset-0 opacity-[0.9]"
           style={{
-            background: 'radial-gradient(ellipse 120% 90% at 50% -20%, var(--color-accent-muted), transparent 50%)',
+            background: 'radial-gradient(ellipse 120% 90% at 50% -20%, rgba(99,102,241,0.45), transparent 52%)',
           }}
         />
         <div
           className="absolute inset-0 opacity-50"
           style={{
-            background: 'radial-gradient(ellipse 60% 40% at 90% 50%, var(--color-accent-muted), transparent 55%)',
+            background: 'radial-gradient(ellipse 60% 40% at 90% 50%, rgba(56,189,248,0.28), transparent 55%)',
           }}
         />
         <div
           className="absolute inset-0 opacity-40"
           style={{
-            background: 'radial-gradient(ellipse 50% 40% at 10% 80%, var(--color-accent-muted), transparent 50%)',
+            background: 'radial-gradient(ellipse 50% 40% at 10% 80%, rgba(16,185,129,0.22), transparent 50%)',
           }}
         />
         <div
           className="absolute inset-0"
           style={{
-            background: 'linear-gradient(to bottom, transparent 0%, var(--color-bg) 88%)',
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, var(--color-bg) 88%)',
           }}
         />
       </div>
 
-      <main className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_1.1fr] lg:gap-16 xl:gap-20 items-center justify-center w-full max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16 lg:py-20 lg:min-h-[calc(100vh-5rem)]">
+      <main className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_1.1fr] lg:gap-12 xl:gap-14 items-center justify-center w-full max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10 lg:py-12 lg:min-h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-hidden">
         {/* Hero + CTA (left on lg) */}
         <div className="flex flex-col items-center lg:items-start text-center lg:text-left w-full max-w-xl mx-auto lg:mx-0 animate-stagger">
           <div
@@ -145,12 +176,18 @@ export function Login() {
           <h1 className="text-4xl font-bold font-display tracking-tight sm:text-5xl lg:text-5xl xl:text-6xl" style={{ color: 'var(--color-text)' }}>
             Stacky
           </h1>
-          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1 text-xs font-medium theme-accent-bg">
-            <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" aria-hidden style={{ color: 'var(--color-accent)' }} />
-            Open source
-          </span>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1 text-xs font-medium theme-accent-bg">
+              <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" aria-hidden style={{ color: 'var(--color-accent)' }} />
+              Open source
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1 text-xs font-medium bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" aria-hidden />
+              New: Google Calendar Sync
+            </span>
+          </div>
           <p className="mx-auto lg:mx-0 mt-4 max-w-md text-base sm:text-lg theme-page-muted">
-            Keep track of your work in one place — from daily tasks to big projects. Create collaborative workspaces to work with your friends on your new SaaS idea, side projects, and more. Stay focused and get things done.
+            Imagine your day as a simple arc: you set the scene, stay in flow, and close the loop. Stacky keeps that story intact—across workspaces, projects, and the calendar—without pulling you out of momentum.
           </p>
           <div className="mt-8 flex flex-col items-center lg:items-start w-full">
             {authError && (
@@ -180,7 +217,7 @@ export function Login() {
         </div>
 
         {/* Feature cards (right on lg) */}
-        <section className="w-full mt-14 lg:mt-0">
+        <section className="w-full mt-10 lg:mt-0 max-h-[60vh] overflow-auto pr-1">
           <h2 className="text-sm font-semibold uppercase tracking-wider theme-page-muted mb-6 text-center lg:text-left animate-fade-in">
             How it helps you
           </h2>
