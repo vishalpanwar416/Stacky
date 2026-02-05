@@ -74,12 +74,9 @@ See [docs/DATA_MODEL.md](docs/DATA_MODEL.md) for collections (users, workspaces,
 
 ## Roadmap (ideas)
 
-- Projects under workspaces (Epics → Tasks)
-- Due dates + reminders + calendar view
+- **Done:** Due dates; shortcuts + command bar; completion notes; search/filter; toasts; skeleton loaders; limit in-progress (+ user pref); **projects** (create, assign to task, filter on dashboard); **theme toggle** (light/dark/system); **task dependencies** (blocked by task link + selector)
+- Due date reminders + calendar view
 - Recurring tasks
-- Task dependencies (blocked by)
 - Invite friends to shared workspace (link/email)
 - Notifications (assigned, due, blocked)
 - Basic analytics (tasks/week, focus time)
-- Dark/light theme toggle
-- Keyboard shortcuts + command bar

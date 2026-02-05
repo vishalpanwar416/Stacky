@@ -49,22 +49,31 @@ export async function getWorkspace(id: string): Promise<Workspace | null> {
 export async function getWorkspacesForUser(userId: string): Promise<Workspace[]> {
   const q = query(
     collection(getDb(), WORKSPACES),
-    where('ownerId', '==', userId),
-    orderBy('updatedAt', 'desc')
+    where('ownerId', '==', userId)
   )
   const snap = await getDocs(q)
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Workspace))
+  const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Workspace))
+  list.sort((a, b) => {
+    const aTime = a.updatedAt && typeof a.updatedAt.toMillis === 'function' ? a.updatedAt.toMillis() : 0
+    const bTime = b.updatedAt && typeof b.updatedAt.toMillis === 'function' ? b.updatedAt.toMillis() : 0
+    return bTime - aTime
+  })
+  return list
 }
 
 export async function getWorkspacesWhereMember(userId: string): Promise<Workspace[]> {
-  // Firestore doesn't support "where doc id in subcollection". So we need to query members subcollections or store member ids on workspace. For MVP, we only list workspaces where ownerId === userId. Later add workspace.memberIds array for "shared" workspaces.
   const q = query(
     collection(getDb(), WORKSPACES),
-    where('ownerId', '==', userId),
-    orderBy('updatedAt', 'desc')
+    where('ownerId', '==', userId)
   )
   const snap = await getDocs(q)
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Workspace))
+  const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Workspace))
+  list.sort((a, b) => {
+    const aTime = a.updatedAt && typeof a.updatedAt.toMillis === 'function' ? a.updatedAt.toMillis() : 0
+    const bTime = b.updatedAt && typeof b.updatedAt.toMillis === 'function' ? b.updatedAt.toMillis() : 0
+    return bTime - aTime
+  })
+  return list
 }
 
 export async function updateWorkspace(

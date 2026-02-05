@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore'
 import type { Unsubscribe } from 'firebase/firestore'
 import { getDb } from './firebase'
+import { getCountdownFromMs, getDueMsFrom, formatDueLabel } from './taskUtils'
 import type { Task, TaskStatus, TaskComment, TaskActivity, TaskActivityAction } from '../types'
 
 const TASKS = 'tasks'
@@ -33,13 +34,18 @@ export async function createTask(
   createdBy: string
 ): Promise<string> {
   const assignees = data.assignees ?? defaultAssignees(createdBy)
-  const ref = await addDoc(collection(getDb(), TASKS), {
+  const payload: Record<string, unknown> = {
     ...data,
     assignees: { ownerId: assignees.ownerId, watcherIds: assignees.watcherIds ?? [] },
     createdBy,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+  }
+  // Firestore does not accept undefined; omit those fields
+  Object.keys(payload).forEach((key) => {
+    if (payload[key] === undefined) delete payload[key]
   })
+  const ref = await addDoc(collection(getDb(), TASKS), payload)
   await logActivity(ref.id, createdBy, 'created', { title: data.title })
   return ref.id
 }
@@ -96,14 +102,21 @@ export function subscribeTasksByWorkspace(
     where('workspaceId', '==', workspaceId),
     orderBy('updatedAt', 'desc')
   )
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Task)))
-  })
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Task)))
+    },
+    (err) => {
+      console.error('Tasks subscription error:', err)
+      callback([])
+    }
+  )
 }
 
 export async function updateTask(
   id: string,
-  data: Partial<Pick<Task, 'title' | 'description' | 'status' | 'priority' | 'dueDate' | 'dueTime' | 'estimatedMinutes' | 'reminderAt' | 'tags' | 'completionNote' | 'blockedReason' | 'blockedByTaskId'>>,
+  data: Partial<Pick<Task, 'title' | 'description' | 'status' | 'priority' | 'projectId' | 'dueDate' | 'dueTime' | 'estimatedMinutes' | 'reminderAt' | 'tags' | 'completionNote' | 'blockedReason' | 'blockedByTaskId' | 'timerElapsed' | 'timerLastStartedAt' | 'timerEnabled' | 'completedAt' | 'startedAt'>>,
   userId: string
 ) {
   const ref = doc(getDb(), TASKS, id)
@@ -113,6 +126,19 @@ export async function updateTask(
   if (data.status === 'done') {
     updates.completedAt = serverTimestamp()
   }
+  if (data.status === 'in_progress' && prevData?.status !== 'in_progress') {
+    updates.startedAt = serverTimestamp()
+    // If timer is enabled (or not specified, default to true for existing?), start the timer session
+    if (prevData?.timerEnabled !== false) {
+      updates.timerLastStartedAt = serverTimestamp()
+      // Ensure we don't accidentally overwrite existing elapsed if it wasn't valid before
+      if (prevData?.timerElapsed === undefined) updates.timerElapsed = 0
+    }
+  }
+  // Firestore does not accept undefined; remove any undefined fields
+  Object.keys(updates).forEach((key) => {
+    if (updates[key] === undefined) delete updates[key]
+  })
   if (data.status && prevData?.status !== data.status) {
     await logActivity(id, userId, 'status_change', {
       from: prevData?.status,
@@ -126,6 +152,39 @@ export async function updateTask(
     }
   }
   await updateDoc(ref, updates)
+}
+
+
+export async function toggleTaskTimer(task: Task, userId: string) {
+  const ref = doc(getDb(), TASKS, task.id)
+  const now = serverTimestamp()
+
+  if (task.timerLastStartedAt) {
+    // PAUSE: Calculate elapsed and clear start time
+    // We can't calculate exact elapsed with serverTimestamp on client easily for the update,
+    // so we rely on Date.now(). Ideally perform this on backend or trust client time for "elapsed".
+    // For simplicity, we'll trust client time for the calculation of the *segment*.
+    // Or better: use Firestore server timestamp for start, and when pausing, use server timestamp?
+    // No, diffing timestamps in client is easier.
+
+    // Actually, task.timerLastStartedAt is a generic type in the interface but Firestore returns Timestamp.
+    // If it's a Timestamp, it has toMillis().
+    const start = typeof task.timerLastStartedAt.toMillis === 'function' ? task.timerLastStartedAt.toMillis() : 0
+    const added = start ? Date.now() - start : 0
+    const newElapsed = (task.timerElapsed || 0) + added
+
+    await updateDoc(ref, {
+      timerLastStartedAt: null, // explicit null to pause
+      timerElapsed: newElapsed,
+      updatedAt: now
+    })
+  } else {
+    // RESUME
+    await updateDoc(ref, {
+      timerLastStartedAt: now,
+      updatedAt: now
+    })
+  }
 }
 
 export async function assignTask(

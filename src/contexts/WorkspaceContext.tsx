@@ -39,12 +39,18 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       return
     }
     setLoading(true)
-    const list = await getWorkspacesForUser(user.uid)
-    setWorkspaces(list)
-    if (currentWorkspaceId && !list.some((w) => w.id === currentWorkspaceId)) {
-      setCurrentWorkspaceIdState(list[0]?.id ?? null)
+    try {
+      const list = await getWorkspacesForUser(user.uid)
+      setWorkspaces(list)
+      if (currentWorkspaceId && !list.some((w) => w.id === currentWorkspaceId)) {
+        setCurrentWorkspaceIdState(list[0]?.id ?? null)
+      }
+    } catch (err) {
+      console.error('Failed to load workspaces:', err)
+      setWorkspaces([])
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [user, currentWorkspaceId])
 
   useEffect(() => {

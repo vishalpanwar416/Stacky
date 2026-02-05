@@ -28,9 +28,13 @@ export interface Task {
   updatedAt: Timestamp
   completedAt?: Timestamp
   completionNote?: string
+  startedAt?: Timestamp
   assignees: TaskAssignees
   blockedReason?: string
   blockedByTaskId?: string
+  timerElapsed?: number
+  timerLastStartedAt?: Timestamp
+  timerEnabled?: boolean
 }
 
 export interface TaskCreate
@@ -102,6 +106,7 @@ export type TaskActivityAction =
   | 'completed'
   | 'reopened'
   | 'blocked'
+  | 'due_set'
 
 export interface TaskActivity {
   id: string

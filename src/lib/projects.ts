@@ -19,11 +19,14 @@ const PROJECTS = 'projects'
 export async function createProject(
   data: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<string> {
-  const ref = await addDoc(collection(getDb(), PROJECTS), {
-    ...data,
+  const payload: Record<string, unknown> = {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  })
+  }
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined) payload[key] = value
+  }
+  const ref = await addDoc(collection(getDb(), PROJECTS), payload)
   return ref.id
 }
 
@@ -47,10 +50,11 @@ export async function updateProject(
   id: string,
   data: Partial<Pick<Project, 'name' | 'description' | 'status' | 'health'>>
 ) {
-  await updateDoc(doc(getDb(), PROJECTS, id), {
-    ...data,
-    updatedAt: serverTimestamp(),
-  })
+  const payload: Record<string, unknown> = { updatedAt: serverTimestamp() }
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined) payload[key] = value
+  }
+  await updateDoc(doc(getDb(), PROJECTS, id), payload)
 }
 
 export async function deleteProject(id: string) {

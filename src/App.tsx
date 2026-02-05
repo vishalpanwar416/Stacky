@@ -2,6 +2,10 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { WorkspaceProvider } from './contexts/WorkspaceContext'
+import { ToastProvider } from './contexts/ToastContext'
+import { ThemeProvider } from './contexts/ThemeContext'
+import { ToastContainer } from './components/ToastContainer'
+import { Skeleton } from './components/Skeleton'
 import { Dashboard } from './pages/Dashboard'
 import { Login } from './pages/Login'
 import { CreateWorkspace } from './pages/CreateWorkspace'
@@ -79,7 +83,16 @@ function FirebaseConfigScreen() {
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
-  if (loading) return <div className="flex min-h-screen items-center justify-center bg-neutral-950 text-neutral-400 animate-fade-in">Loading…</div>
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-neutral-950 p-8">
+        <div className="flex flex-col items-center gap-4">
+          <Skeleton className="h-10 w-10 rounded-xl" />
+          <Skeleton className="h-4 w-24 rounded" />
+        </div>
+      </div>
+    )
+  }
   if (!user) return <Navigate to="/login" replace />
   return <>{children}</>
 }
@@ -141,9 +154,14 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <AuthProvider>
-          <WorkspaceProvider>
-            <AppRoutes />
-          </WorkspaceProvider>
+          <ThemeProvider>
+            <WorkspaceProvider>
+              <ToastProvider>
+                <AppRoutes />
+                <ToastContainer />
+              </ToastProvider>
+            </WorkspaceProvider>
+          </ThemeProvider>
         </AuthProvider>
       </BrowserRouter>
     </ErrorBoundary>
