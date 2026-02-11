@@ -1,6 +1,7 @@
-import { useAuth } from '../contexts/AuthContext'
 import { useState, useEffect } from 'react'
-import { getUserInvitations } from '../lib/workspaces'
+import { useAuth } from '../contexts/AuthContext'
+import { subscribeUserInvitations } from '../lib/workspaces'
+import { subscribeNotifications } from '../lib/notifications'
 
 interface NotificationButtonProps {
     onClick: () => void
@@ -9,24 +10,27 @@ interface NotificationButtonProps {
 
 export function NotificationButton({ onClick, active }: NotificationButtonProps) {
     const { user } = useAuth()
-    const [count, setCount] = useState(0)
+    const [inviteCount, setInviteCount] = useState(0)
+    const [notifCount, setNotifCount] = useState(0)
 
     useEffect(() => {
-        if (!user?.email) return
-        const fetchCount = async () => {
-            try {
-                const invites = await getUserInvitations(user.email!)
-                setCount(invites.length)
-            } catch (err) {
-                console.error('Failed to fetch notification count', err)
-            }
-        }
-        fetchCount()
+        if (!user?.email || !user?.uid) return
 
-        // In a real app, we might use a listener here.
-        const interval = setInterval(fetchCount, 60000) // Refresh every minute
-        return () => clearInterval(interval)
+        const unsubInvites = subscribeUserInvitations(user.email, (invites) => {
+            setInviteCount(invites.length)
+        })
+
+        const unsubNotifs = subscribeNotifications(user.uid, (notifs) => {
+            setNotifCount(notifs.filter(n => !n.read).length)
+        })
+
+        return () => {
+            unsubInvites()
+            unsubNotifs()
+        }
     }, [user])
+
+    const count = inviteCount + notifCount
 
     return (
         <button

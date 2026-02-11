@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useAuth } from './AuthContext'
-import { getWorkspacesForUser } from '../lib/workspaces'
+import { getWorkspacesForUser, subscribeWorkspaces } from '../lib/workspaces'
 import type { Workspace } from '../types'
 
 interface WorkspaceContextValue {
@@ -32,37 +32,37 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   })
   const [loading, setLoading] = useState(true)
 
-  const refreshWorkspaces = useCallback(async () => {
+  useEffect(() => {
     if (!user) {
       setWorkspaces([])
       setLoading(false)
       return
     }
+
     setLoading(true)
-    try {
-      const list = await getWorkspacesForUser(user.uid)
+    const unsubscribe = subscribeWorkspaces(user.uid, (list) => {
       setWorkspaces(list)
+      setLoading(false)
       if (currentWorkspaceId && !list.some((w) => w.id === currentWorkspaceId)) {
         setCurrentWorkspaceIdState(list[0]?.id ?? null)
       }
-    } catch (err) {
-      console.error('Failed to load workspaces:', err)
-      setWorkspaces([])
-    } finally {
-      setLoading(false)
-    }
+    })
+
+    return () => unsubscribe()
   }, [user, currentWorkspaceId])
 
-  useEffect(() => {
-    refreshWorkspaces()
-  }, [refreshWorkspaces])
+  const refreshWorkspaces = useCallback(async () => {
+    if (!user) return
+    const list = await getWorkspacesForUser(user.uid)
+    setWorkspaces(list)
+  }, [user])
 
   const setCurrentWorkspaceId = useCallback((id: string | null) => {
     setCurrentWorkspaceIdState(id)
     try {
       if (id) localStorage.setItem('stacky_workspace_id', id)
       else localStorage.removeItem('stacky_workspace_id')
-    } catch {}
+    } catch { }
   }, [])
 
   const currentWorkspace =

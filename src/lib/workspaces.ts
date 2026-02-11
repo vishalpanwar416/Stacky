@@ -10,8 +10,13 @@ import {
   where,
   serverTimestamp,
   writeBatch,
+  onSnapshot,
+  arrayUnion,
 } from 'firebase/firestore'
+import type { Unsubscribe } from 'firebase/firestore'
 import { getDb } from './firebase'
+import { getUserByEmail } from './users'
+import { createNotification } from './notifications'
 import type { Workspace, WorkspaceMember } from '../types'
 
 const WORKSPACES = 'workspaces'
@@ -26,6 +31,7 @@ export async function createWorkspace(
   const ref = await addDoc(collection(getDb(), WORKSPACES), {
     ...data,
     ownerId,
+    memberIds: [ownerId],
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
@@ -46,33 +52,69 @@ export async function getWorkspace(id: string): Promise<Workspace | null> {
 }
 
 export async function getWorkspacesForUser(userId: string): Promise<Workspace[]> {
-  const q = query(
+  const ownedQ = query(
     collection(getDb(), WORKSPACES),
     where('ownerId', '==', userId)
   )
-  const snap = await getDocs(q)
-  const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Workspace))
-  list.sort((a, b) => {
-    const aTime = a.updatedAt && typeof a.updatedAt.toMillis === 'function' ? a.updatedAt.toMillis() : 0
-    const bTime = b.updatedAt && typeof b.updatedAt.toMillis === 'function' ? b.updatedAt.toMillis() : 0
-    return bTime - aTime
-  })
-  return list
+
+  const memberQ = query(
+    collection(getDb(), WORKSPACES),
+    where('memberIds', 'array-contains', userId)
+  )
+
+  console.log('Fetching workspaces for:', userId)
+
+  try {
+    const ownedSnap = await getDocs(ownedQ).catch(err => {
+      console.error('Owned query failed:', err)
+      return { docs: [] } as any
+    })
+
+    const memberSnap = await getDocs(memberQ).catch(err => {
+      console.error('Member query failed:', err)
+      return { docs: [] } as any
+    })
+
+    const ownedList = ownedSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as Workspace))
+    const memberList = memberSnap.docs.map((d: any) => ({ id: d.id, ...d.data() } as Workspace))
+
+    const map = new Map<string, Workspace>()
+    ownedList.forEach((w: Workspace) => map.set(w.id, w))
+    memberList.forEach((w: Workspace) => map.set(w.id, w))
+
+    const list = Array.from(map.values())
+    list.sort((a, b) => {
+      const aTime = a.updatedAt && typeof a.updatedAt.toMillis === 'function' ? a.updatedAt.toMillis() : 0
+      const bTime = b.updatedAt && typeof b.updatedAt.toMillis === 'function' ? b.updatedAt.toMillis() : 0
+      return bTime - aTime
+    })
+
+    console.log(`Found ${list.length} workspaces (${ownedList.length} owned, ${memberList.length} joined)`)
+    return list
+  } catch (err) {
+    console.error('Unexpected error in getWorkspacesForUser:', err)
+    return []
+  }
 }
 
-export async function getWorkspacesWhereMember(userId: string): Promise<Workspace[]> {
+export function subscribeWorkspaces(userId: string, callback: (workspaces: Workspace[]) => void): Unsubscribe {
   const q = query(
     collection(getDb(), WORKSPACES),
-    where('ownerId', '==', userId)
+    where('memberIds', 'array-contains', userId)
   )
-  const snap = await getDocs(q)
-  const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Workspace))
-  list.sort((a, b) => {
-    const aTime = a.updatedAt && typeof a.updatedAt.toMillis === 'function' ? a.updatedAt.toMillis() : 0
-    const bTime = b.updatedAt && typeof b.updatedAt.toMillis === 'function' ? b.updatedAt.toMillis() : 0
-    return bTime - aTime
+
+  return onSnapshot(q, (snap) => {
+    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Workspace))
+    list.sort((a, b) => {
+      const aTime = a.updatedAt && typeof a.updatedAt.toMillis === 'function' ? a.updatedAt.toMillis() : 0
+      const bTime = b.updatedAt && typeof b.updatedAt.toMillis === 'function' ? b.updatedAt.toMillis() : 0
+      return bTime - aTime
+    })
+    callback(list)
+  }, (err) => {
+    console.error('Workspaces subscription error:', err)
+    callback([])
   })
-  return list
 }
 
 export async function updateWorkspace(
@@ -117,12 +159,13 @@ export async function inviteMember(
 const INVITATIONS = 'invitations'
 
 export async function createInvitation(workspaceId: string, email: string, invitedBy: string) {
+  const normalizedEmail = email.toLowerCase().trim()
   const invitationsRef = collection(getDb(), INVITATIONS)
-  // Check if invitation already exists?
+
   const q = query(
     invitationsRef,
     where('workspaceId', '==', workspaceId),
-    where('invitedEmail', '==', email),
+    where('invitedEmail', '==', normalizedEmail),
     where('status', '==', 'pending')
   )
   const existing = await getDocs(q)
@@ -132,12 +175,42 @@ export async function createInvitation(workspaceId: string, email: string, invit
 
   await addDoc(invitationsRef, {
     workspaceId,
-    invitedEmail: email,
+    invitedEmail: normalizedEmail,
     status: 'pending',
     role: 'member',
     invitedBy,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+  })
+
+  // Try to notify the user if they already exist
+  const existingUser = await getUserByEmail(normalizedEmail)
+  if (existingUser) {
+    const ws = await getWorkspace(workspaceId)
+    await createNotification({
+      userId: existingUser.id,
+      type: 'invitation',
+      title: 'Workspace Invitation',
+      body: `You've been invited to join "${ws?.name || 'a workspace'}".`,
+      link: '/dashboard', // Can refine later
+      metadata: { workspaceId }
+    })
+  }
+}
+
+export function subscribeUserInvitations(email: string, callback: (invites: any[]) => void): Unsubscribe {
+  const normalizedEmail = email.toLowerCase().trim()
+  const q = query(
+    collection(getDb(), INVITATIONS),
+    where('invitedEmail', '==', normalizedEmail),
+    where('status', '==', 'pending')
+  )
+
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+  }, (err) => {
+    console.error('Invitations subscription error:', err)
+    callback([])
   })
 }
 
@@ -155,9 +228,10 @@ export async function getWorkspaceInvitations(workspaceId: string): Promise<any[
 }
 
 export async function getUserInvitations(email: string): Promise<any[]> {
+  const normalizedEmail = email.toLowerCase().trim()
   const q = query(
     collection(getDb(), INVITATIONS),
-    where('invitedEmail', '==', email),
+    where('invitedEmail', '==', normalizedEmail),
     where('status', '==', 'pending')
   )
   const snap = await getDocs(q)
@@ -179,18 +253,51 @@ export async function acceptInvitation(invitationId: string, userId: string, dis
   // Add member to workspace
   await inviteMember(invData.workspaceId, userId, displayName, invData.invitedEmail)
 
+  // Update workspace memberIds array
+  await updateDoc(doc(getDb(), WORKSPACES, invData.workspaceId), {
+    memberIds: arrayUnion(userId),
+    updatedAt: serverTimestamp()
+  })
+
   // Update invitation status
   await updateDoc(invRef, {
     status: 'accepted',
     updatedAt: serverTimestamp()
   })
 
+  // Notify the inviter
+  const ws = await getWorkspace(invData.workspaceId)
+  await createNotification({
+    userId: invData.invitedBy,
+    type: 'system',
+    title: 'Invitation Accepted',
+    body: `${displayName || invData.invitedEmail} joined "${ws?.name}".`,
+    link: '/dashboard',
+    metadata: { workspaceId: invData.workspaceId }
+  })
+
   return invData.workspaceId
 }
 
 export async function declineInvitation(invitationId: string) {
-  await updateDoc(doc(getDb(), INVITATIONS, invitationId), {
+  const invRef = doc(getDb(), INVITATIONS, invitationId)
+  const invSnap = await getDoc(invRef)
+  if (!invSnap.exists()) return
+
+  const invData = invSnap.data()
+
+  await updateDoc(invRef, {
     status: 'declined',
     updatedAt: serverTimestamp()
+  })
+
+  // Notify the inviter
+  const ws = await getWorkspace(invData.workspaceId)
+  await createNotification({
+    userId: invData.invitedBy,
+    type: 'system',
+    title: 'Invitation Declined',
+    body: `${invData.invitedEmail} declined your invitation to "${ws?.name}".`,
+    metadata: { workspaceId: invData.workspaceId }
   })
 }

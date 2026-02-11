@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getWorkspaceMembers, createInvitation } from '../lib/workspaces'
-import type { Workspace, WorkspaceMember } from '../types'
+import { searchUsers } from '../lib/users'
+import type { Workspace, WorkspaceMember, UserProfile } from '../types'
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -9,6 +10,7 @@ interface WorkspaceSettingsModalProps {
     onClose: () => void
     workspace: Workspace
     onUpdate: (id: string, name: string, description?: string) => Promise<void>
+    initialTab?: 'general' | 'members'
 }
 
 export function WorkspaceSettingsModal({
@@ -16,11 +18,19 @@ export function WorkspaceSettingsModal({
     onClose,
     workspace,
     onUpdate,
+    initialTab = 'general',
 }: WorkspaceSettingsModalProps) {
     const { toast } = useToast()
     const { user } = useAuth()
 
-    const [activeTab, setActiveTab] = useState<'general' | 'members'>('general')
+    const [activeTab, setActiveTab] = useState<'general' | 'members'>(initialTab)
+
+    useEffect(() => {
+        if (isOpen) {
+            setActiveTab(initialTab)
+        }
+    }, [isOpen, initialTab])
+
     const [name, setName] = useState(workspace.name)
     const [description, setDescription] = useState(workspace.description || '')
     const [loading, setLoading] = useState(false)
@@ -29,6 +39,10 @@ export function WorkspaceSettingsModal({
 
     const [inviteEmail, setInviteEmail] = useState('')
     const [inviting, setInviting] = useState(false)
+    const [searchResults, setSearchResults] = useState<UserProfile[]>([])
+    const [searching, setSearching] = useState(false)
+    const [showResults, setShowResults] = useState(false)
+    const searchRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
         setName(workspace.name)
@@ -41,6 +55,17 @@ export function WorkspaceSettingsModal({
         }
     }, [isOpen, activeTab, workspace.id])
 
+    // Close results when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+                setShowResults(false)
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [])
+
     const fetchMembers = async () => {
         setMembersLoading(true)
         try {
@@ -51,6 +76,25 @@ export function WorkspaceSettingsModal({
             toast('Failed to load members', 'error')
         } finally {
             setMembersLoading(false)
+        }
+    }
+
+    const handleSearch = async (val: string) => {
+        setInviteEmail(val)
+        if (val.trim().length >= 2) {
+            setSearching(true)
+            setShowResults(true)
+            try {
+                const results = await searchUsers(val.trim())
+                setSearchResults(results)
+            } catch (err) {
+                console.error('Search error:', err)
+            } finally {
+                setSearching(false)
+            }
+        } else {
+            setSearchResults([])
+            setShowResults(false)
         }
     }
 
@@ -71,16 +115,19 @@ export function WorkspaceSettingsModal({
         }
     }
 
-    const handleInvite = async (e: React.FormEvent) => {
-        e.preventDefault()
-        if (!inviteEmail.trim()) return
+    const handleInvite = async (e?: React.FormEvent, emailValue?: string) => {
+        if (e) e.preventDefault()
+        const email = (emailValue || inviteEmail).trim()
+        if (!email) return
         if (!user) return
 
         setInviting(true)
         try {
-            await createInvitation(workspace.id, inviteEmail.trim(), user.uid)
-            toast(`Invitation sent to ${inviteEmail}`, 'success')
+            await createInvitation(workspace.id, email, user.uid)
+            toast(`Invitation sent to ${email}`, 'success')
             setInviteEmail('')
+            setShowResults(false)
+            setSearchResults([])
         } catch (error) {
             console.error(error)
             toast(error instanceof Error ? error.message : 'Failed to send invite', 'error')
@@ -176,14 +223,58 @@ export function WorkspaceSettingsModal({
                         </form>
                     ) : (
                         <div className="space-y-6">
-                            <form onSubmit={handleInvite} className="flex gap-2">
-                                <input
-                                    type="email"
-                                    value={inviteEmail}
-                                    onChange={(e) => setInviteEmail(e.target.value)}
-                                    placeholder="Invite by email..."
-                                    className="flex-1 rounded-xl border theme-border bg-white/5 px-3 py-2 text-sm theme-text focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                                />
+                            <form onSubmit={(e) => handleInvite(e)} className="flex gap-2">
+                                <div className="relative flex-1" ref={searchRef}>
+                                    <input
+                                        type="email"
+                                        value={inviteEmail}
+                                        onChange={(e) => handleSearch(e.target.value)}
+                                        onFocus={() => inviteEmail.length >= 2 && setShowResults(true)}
+                                        placeholder="Type name or email..."
+                                        className="w-full rounded-xl border theme-border bg-white/5 px-3 py-2 text-sm theme-text focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                                    />
+                                    {searching && (
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                                        </div>
+                                    )}
+
+                                    {showResults && searchResults.length > 0 && (
+                                        <div className="absolute left-0 right-0 top-full z-20 mt-2 max-h-60 overflow-y-auto rounded-xl border theme-border theme-bg-subtle backdrop-blur-xl shadow-2xl animate-scale-in ring-1 ring-black/5">
+                                            {searchResults.map((res) => (
+                                                <button
+                                                    key={res.id}
+                                                    type="button"
+                                                    onClick={() => handleInvite(undefined, res.email)}
+                                                    className="flex w-full items-center gap-3 p-3 text-left transition-all hover:bg-white/10 active:scale-[0.98]"
+                                                >
+                                                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl font-medium text-sm ${res.photoURL ? '' : 'bg-primary/20 theme-text'}`}>
+                                                        {res.photoURL ? (
+                                                            <img src={res.photoURL} alt="" className="h-full w-full rounded-xl object-cover" />
+                                                        ) : (
+                                                            (res.displayName?.[0] || res.email?.[0] || '?').toUpperCase()
+                                                        )}
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="truncate text-sm font-semibold theme-text">{res.displayName}</div>
+                                                        <div className="truncate text-xs theme-text-muted">{res.email}</div>
+                                                    </div>
+                                                    <div className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
+                                                        <svg className="h-4 w-4 theme-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                                        </svg>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {showResults && !searching && searchResults.length === 0 && inviteEmail.length >= 2 && (
+                                        <div className="absolute left-0 right-0 top-full z-20 mt-2 rounded-xl border theme-border theme-bg-subtle backdrop-blur-xl p-4 shadow-2xl animate-scale-in text-center text-sm theme-text-muted">
+                                            No users found. Hit enter to invite via email.
+                                        </div>
+                                    )}
+                                </div>
                                 <button
                                     type="submit"
                                     disabled={inviting || !inviteEmail.trim()}
@@ -204,24 +295,31 @@ export function WorkspaceSettingsModal({
                                         <div className="h-10 animate-pulse rounded-lg bg-white/5" />
                                     </div>
                                 ) : (
-                                    <div className="max-h-60 overflow-y-auto space-y-1 -mx-2 px-2">
-                                        {members.map((member) => (
+                                    <div className="max-height-60 overflow-y-auto space-y-1 -mx-2 px-2">
+                                        {[...members].sort((a, b) => {
+                                            if (a.userId === user?.uid) return -1
+                                            if (b.userId === user?.uid) return 1
+                                            if (a.role === 'owner') return -1
+                                            if (b.role === 'owner') return 1
+                                            return 0
+                                        }).map((member) => (
                                             <div key={member.userId} className="flex items-center justify-between rounded-lg p-2 hover:bg-white/5">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/20 text-xs font-medium theme-text">
+                                                    <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium ${member.userId === user?.uid ? 'bg-primary text-white' : 'bg-primary/20 theme-text'}`}>
                                                         {(member.displayName?.[0] || member.email?.[0] || '?').toUpperCase()}
                                                     </div>
                                                     <div>
                                                         <div className="text-sm font-medium theme-text">
                                                             {member.displayName || 'Unknown User'}
+                                                            {member.userId === user?.uid && <span className="ml-2 text-[10px] theme-text-muted opacity-60">(You)</span>}
                                                         </div>
                                                         <div className="text-xs theme-text-muted">
                                                             {member.email || 'No email'}
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ${member.role === 'owner'
-                                                    ? 'bg-amber-500/10 text-amber-500'
+                                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-tight ${member.role === 'owner'
+                                                    ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
                                                     : 'bg-white/10 theme-text-muted'
                                                     }`}>
                                                     {member.role}

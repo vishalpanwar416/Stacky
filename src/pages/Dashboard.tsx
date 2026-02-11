@@ -113,6 +113,7 @@ export function Dashboard() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [editingWorkspaceTab, setEditingWorkspaceTab] = useState<'general' | 'members'>('general')
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null)
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
@@ -375,10 +376,11 @@ export function Dashboard() {
 
   const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null)
 
-  const handleEditWorkspace = (id: string) => {
+  const handleEditWorkspace = (id: string, tab: 'general' | 'members' = 'general') => {
     const ws = workspaces.find((w) => w.id === id)
     if (ws) {
       setEditingWorkspace(ws)
+      setEditingWorkspaceTab(tab)
       setMobileMenuOpen(false)
     }
   }
@@ -422,6 +424,7 @@ export function Dashboard() {
           onClose={() => setEditingWorkspace(null)}
           workspace={editingWorkspace}
           onUpdate={handleUpdateWorkspace}
+          initialTab={editingWorkspaceTab}
         />
       )}
 
@@ -638,6 +641,17 @@ export function Dashboard() {
                       />
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => handleEditWorkspace(currentWorkspace.id, 'members')}
+                    className="flex items-center gap-2 rounded-xl px-2.5 py-1 text-sm font-medium theme-text-muted transition-colors hover:theme-text hover:bg-white/5"
+                    title="Manage members"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                    <span className="hidden sm:inline">Members</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => navigate(`/workspaces/${currentWorkspace.id}/tasks/new`)}

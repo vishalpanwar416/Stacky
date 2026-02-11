@@ -48,6 +48,7 @@ export interface Workspace {
   slug: string
   description?: string
   ownerId: string
+  memberIds: string[]
   visibility: 'private' | 'shared'
   createdAt: Timestamp
   updatedAt: Timestamp
@@ -128,3 +129,18 @@ export interface WorkspaceInvitation {
   createdAt: Timestamp
   updatedAt: Timestamp
 }
+
+export type NotificationType = 'invitation' | 'mention' | 'assignment' | 'system'
+
+export interface AppNotification {
+  id: string
+  userId: string
+  type: NotificationType
+  title: string
+  body: string
+  link?: string
+  read: boolean
+  metadata?: Record<string, any>
+  createdAt: Timestamp
+}
+

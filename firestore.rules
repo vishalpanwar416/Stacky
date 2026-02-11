@@ -10,51 +10,63 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function getWorkspaceMember(workspaceId) {
-      return get(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)).data != null;
+    function isOwnerOfWorkspace(workspaceId) {
+      let path = /databases/$(database)/documents/workspaces/$(workspaceId);
+      return isSignedIn() && exists(path) && get(path).data.get('ownerId', '') == request.auth.uid;
     }
 
     function isWorkspaceMember(workspaceId) {
-      return isSignedIn() && (
-        get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid
-        || getWorkspaceMember(workspaceId)
+      let path = /databases/$(database)/documents/workspaces/$(workspaceId);
+      return isSignedIn() && exists(path) && (
+        get(path).data.get('ownerId', '') == request.auth.uid
+        || request.auth.uid in get(path).data.get('memberIds', [])
       );
     }
 
     function isTaskAssignee(task) {
-      let assignees = task.data.assignees;
+      let assignees = task.data.get('assignees', {});
       return assignees != null && (
-        assignees.ownerId == request.auth.uid
-        || (assignees.watcherIds != null && request.auth.uid in assignees.watcherIds)
+        assignees.get('ownerId', '') == request.auth.uid
+        || request.auth.uid in assignees.get('watcherIds', [])
       );
     }
 
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId);
     }
 
     match /workspaces/{workspaceId} {
       allow read: if isSignedIn() && (
-        resource.data.ownerId == request.auth.uid
-        || getWorkspaceMember(workspaceId)
+        resource.data.get('ownerId', '') == request.auth.uid
+        || request.auth.uid in resource.data.get('memberIds', [])
       );
-      allow create: if isSignedIn() && request.resource.data.ownerId == request.auth.uid;
-      allow update, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.get('ownerId', '') == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.get('ownerId', '') == request.auth.uid;
 
       match /members/{memberId} {
         allow read: if isWorkspaceMember(workspaceId);
         allow create: if isSignedIn() && memberId == request.auth.uid;
-        allow update, delete: if isSignedIn() && get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid;
+        allow update, delete: if isSignedIn() && isOwnerOfWorkspace(workspaceId);
       }
     }
 
     match /invitations/{invitationId} {
-      allow read: if isSignedIn() && request.auth.token.email == resource.data.invitedEmail;
+      allow read: if isSignedIn() && (
+        request.auth.token.email.lower() == resource.data.invitedEmail
+        || isOwnerOfWorkspace(resource.data.workspaceId)
+      );
       allow create: if isSignedIn() && isWorkspaceMember(request.resource.data.workspaceId);
       allow update: if isSignedIn() && (
-        request.auth.token.email == resource.data.invitedEmail
-        || get(/databases/$(database)/documents/workspaces/$(resource.data.workspaceId)).data.ownerId == request.auth.uid
+        request.auth.token.email.lower() == resource.data.invitedEmail
+        || isOwnerOfWorkspace(resource.data.workspaceId)
       );
+      allow delete: if isSignedIn() && isOwnerOfWorkspace(resource.data.workspaceId);
+    }
+
+    match /notifications/{notificationId} {
+      allow read, update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn(); // Allow app to create notifications for others
     }
 
     match /projects/{projectId} {
