@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app'
-import { getAnalytics } from 'firebase/analytics'
+// import { getAnalytics } from 'firebase/analytics' // Dynamically imported
+
 import {
   getAuth as getFirebaseAuth,
   connectAuthEmulator,
@@ -37,14 +38,22 @@ if (hasConfig) {
   authInstance = getFirebaseAuth(app)
   dbInstance = getFirestore(app)
   if (typeof window !== 'undefined' && import.meta.env.VITE_FIREBASE_MEASUREMENT_ID) {
-    getAnalytics(app)
+    import('firebase/analytics')
+      .then(({ getAnalytics }) => {
+        if (app) {
+          getAnalytics(app)
+          console.log('STACKY DEBUG: Analytics initialized')
+        }
+      })
+      .catch((err) => {
+        console.warn('STACKY DEBUG: Analytics module failed to load (likely ad blocker):', err)
+      })
   }
   if (import.meta.env.DEV && import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true') {
     connectAuthEmulator(authInstance, 'http://127.0.0.1:9099')
     connectFirestoreEmulator(dbInstance, '127.0.0.1', 8080)
   }
 }
-
 export const isFirebaseConfigured = hasConfig
 
 /** Use in app code when Firebase is configured (e.g. inside AuthProvider). Throws if not configured. */

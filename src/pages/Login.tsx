@@ -111,6 +111,7 @@ export function Login() {
   if (loading) {
     return (
       <div className="theme-page flex min-h-screen flex-col items-center justify-center gap-6 p-8">
+        <div style={{ color: 'black' }}>Loading application...</div>
         <Skeleton className="h-12 w-12 rounded-2xl" />
         <Skeleton className="h-10 w-48 rounded-lg" />
         <div className="flex gap-3">

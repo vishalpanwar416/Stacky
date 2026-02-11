@@ -48,6 +48,15 @@ service cloud.firestore {
       }
     }
 
+    match /invitations/{invitationId} {
+      allow read: if isSignedIn() && request.auth.token.email == resource.data.invitedEmail;
+      allow create: if isSignedIn() && isWorkspaceMember(request.resource.data.workspaceId);
+      allow update: if isSignedIn() && (
+        request.auth.token.email == resource.data.invitedEmail
+        || get(/databases/$(database)/documents/workspaces/$(resource.data.workspaceId)).data.ownerId == request.auth.uid
+      );
+    }
+
     match /projects/{projectId} {
       allow read, write: if isSignedIn() && isWorkspaceMember(resource.data.workspaceId);
       allow create: if isSignedIn() && isWorkspaceMember(request.resource.data.workspaceId);

@@ -2,9 +2,16 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { isFirebaseConfigured } from './lib/firebase'
 
-const rootEl = document.getElementById('root')!
+console.log('STACKY DEBUG: Main module executing')
+console.log('STACKY DEBUG: Environment variables:', import.meta.env)
+console.log('STACKY DEBUG: Firebase configured:', isFirebaseConfigured)
+
+const rootEl = document.getElementById('root')
+
 function renderError(err: unknown) {
+  if (!rootEl) return
   const message = err instanceof Error ? err.message : String(err)
   rootEl.innerHTML = `
     <div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;background:#0a0a0a;color:#d4d4d4;font-family:system-ui,sans-serif;">
@@ -15,7 +22,17 @@ function renderError(err: unknown) {
   `
 }
 
+window.addEventListener('error', (event) => {
+  renderError(event.error)
+})
+
+window.addEventListener('unhandledrejection', (event) => {
+  renderError(event.reason)
+})
+
 try {
+  if (!rootEl) throw new Error('Root element not found')
+
   createRoot(rootEl).render(
     <StrictMode>
       <App />

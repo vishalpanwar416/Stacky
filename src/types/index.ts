@@ -46,6 +46,7 @@ export interface Workspace {
   id: string
   name: string
   slug: string
+  description?: string
   ownerId: string
   visibility: 'private' | 'shared'
   createdAt: Timestamp
@@ -115,4 +116,15 @@ export interface TaskActivity {
   action: TaskActivityAction
   payload?: Record<string, unknown>
   createdAt: Timestamp
+}
+
+export interface WorkspaceInvitation {
+  id: string
+  workspaceId: string
+  invitedEmail: string
+  status: 'pending' | 'accepted' | 'declined'
+  role: 'member' | 'admin'
+  invitedBy: string // user id of who sent the invite
+  createdAt: Timestamp
+  updatedAt: Timestamp
 }

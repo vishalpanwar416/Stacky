@@ -77,7 +77,7 @@ export async function getWorkspacesWhereMember(userId: string): Promise<Workspac
 
 export async function updateWorkspace(
   id: string,
-  data: Partial<Pick<Workspace, 'name' | 'slug' | 'visibility' | 'updatedAt'>>
+  data: Partial<Pick<Workspace, 'name' | 'slug' | 'description' | 'visibility' | 'updatedAt'>>
 ) {
   await updateDoc(doc(getDb(), WORKSPACES, id), {
     ...data,
@@ -105,12 +105,92 @@ export async function inviteMember(
   email?: string
 ) {
   const ref = doc(getDb(), WORKSPACES, workspaceId, MEMBERS, userId)
-  const { setDoc } = await import('firebase/firestore')
   await setDoc(ref, {
     userId,
     role: 'member',
     joinedAt: serverTimestamp(),
     displayName: displayName ?? null,
     email: email ?? null,
+  })
+}
+
+const INVITATIONS = 'invitations'
+
+export async function createInvitation(workspaceId: string, email: string, invitedBy: string) {
+  const invitationsRef = collection(getDb(), INVITATIONS)
+  // Check if invitation already exists?
+  const q = query(
+    invitationsRef,
+    where('workspaceId', '==', workspaceId),
+    where('invitedEmail', '==', email),
+    where('status', '==', 'pending')
+  )
+  const existing = await getDocs(q)
+  if (!existing.empty) {
+    throw new Error('Invitation already pending for this email')
+  }
+
+  await addDoc(invitationsRef, {
+    workspaceId,
+    invitedEmail: email,
+    status: 'pending',
+    role: 'member',
+    invitedBy,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export async function getWorkspaceInvitations(workspaceId: string): Promise<any[]> {
+  // Use 'any' or proper type if imported. I should import WorkspaceInvitation.
+  // Actually, let's keep it simple and just return the data.
+  // Ideally I should update imports to include WorkspaceInvitation.
+  const q = query(
+    collection(getDb(), INVITATIONS),
+    where('workspaceId', '==', workspaceId),
+    where('status', '==', 'pending')
+  )
+  const snap = await getDocs(q)
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+export async function getUserInvitations(email: string): Promise<any[]> {
+  const q = query(
+    collection(getDb(), INVITATIONS),
+    where('invitedEmail', '==', email),
+    where('status', '==', 'pending')
+  )
+  const snap = await getDocs(q)
+
+  // We ideally need workspace details too. 
+  // For now, let's just return the invitation data. 
+  // The UI can fetch workspace details if needed, or we can enrich it here.
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+export async function acceptInvitation(invitationId: string, userId: string, displayName?: string) {
+  const invRef = doc(getDb(), INVITATIONS, invitationId)
+  const invSnap = await getDoc(invRef)
+  if (!invSnap.exists()) throw new Error('Invitation not found')
+
+  const invData = invSnap.data()
+  if (invData.status !== 'pending') throw new Error('Invitation is no longer pending')
+
+  // Add member to workspace
+  await inviteMember(invData.workspaceId, userId, displayName, invData.invitedEmail)
+
+  // Update invitation status
+  await updateDoc(invRef, {
+    status: 'accepted',
+    updatedAt: serverTimestamp()
+  })
+
+  return invData.workspaceId
+}
+
+export async function declineInvitation(invitationId: string) {
+  await updateDoc(doc(getDb(), INVITATIONS, invitationId), {
+    status: 'declined',
+    updatedAt: serverTimestamp()
   })
 }

@@ -5,21 +5,24 @@ import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { subscribeTasksByWorkspace, updateTask, toggleTaskTimer } from '../lib/tasks'
 import { getCountdown as getTaskCountdown } from '../lib/taskUtils'
-import { deleteWorkspace } from '../lib/workspaces'
+import { deleteWorkspace, updateWorkspace } from '../lib/workspaces'
 import { getProjectsByWorkspace, createProject } from '../lib/projects'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { ShortcutsModal } from '../components/ShortcutsModal'
 import { ShortcutsButton } from '../components/ShortcutsButton'
+import { NotificationButton } from '../components/NotificationButton'
 import { CommandBar } from '../components/CommandBar'
 import { Logo } from '../components/Logo'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { ProfilePopup } from '../components/ProfilePopup'
+import { NotificationPopup } from '../components/NotificationPopup'
 import { useToast } from '../contexts/ToastContext'
 import { DashboardSkeleton } from '../components/Skeleton'
 import { DashboardSidebar } from '../components/DashboardSidebar'
 import { WelcomeOverlay } from '../components/WelcomeOverlay'
 import { TaskTimer } from '../components/TaskTimer'
-import type { Task, Project } from '../types'
+import { WorkspaceSettingsModal } from '../components/WorkspaceSettingsModal'
+import type { Task, Project, Workspace } from '../types'
 
 const statusOrder: Task['status'][] = ['in_progress', 'blocked', 'planned', 'backlog', 'done']
 const priorityOrder: Task['priority'][] = ['P0', 'P1', 'P2', 'P3']
@@ -124,7 +127,9 @@ export function Dashboard() {
   const [newProjectDesc, setNewProjectDesc] = useState('')
   const [creatingProject, setCreatingProject] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const searchBarRef = useRef<HTMLDivElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -368,6 +373,28 @@ export function Dashboard() {
     }
   }
 
+  const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null)
+
+  const handleEditWorkspace = (id: string) => {
+    const ws = workspaces.find((w) => w.id === id)
+    if (ws) {
+      setEditingWorkspace(ws)
+      setMobileMenuOpen(false)
+    }
+  }
+
+  const handleUpdateWorkspace = async (id: string, name: string, description?: string) => {
+    try {
+      await updateWorkspace(id, { name, description })
+      await refreshWorkspaces()
+      setEditingWorkspace(null)
+      pushToast('Workspace updated', 'success')
+    } catch (err) {
+      console.error(err)
+      pushToast('Failed to update workspace', 'error')
+    }
+  }
+
   const handleDeleteWorkspace = async (id: string, name: string) => {
     if (!confirm(`Delete workspace "${name}"? Its tasks will no longer be listed in this app.`)) return
     setDeletingId(id)
@@ -388,25 +415,43 @@ export function Dashboard() {
   return (
     <div className="min-h-screen" style={{ background: 'var(--color-bg)' }}>
       <WelcomeOverlay />
+
+      {editingWorkspace && (
+        <WorkspaceSettingsModal
+          isOpen={!!editingWorkspace}
+          onClose={() => setEditingWorkspace(null)}
+          workspace={editingWorkspace}
+          onUpdate={handleUpdateWorkspace}
+        />
+      )}
+
       <header className="sticky top-0 z-10 glass border-b theme-border">
         <div className="mx-auto flex h-14 w-full items-center justify-between gap-4 px-4 sm:px-6">
-          <button
-            type="button"
-            onClick={() => navigate('/')}
-            className="flex shrink-0 items-center gap-2 rounded-xl py-2 pl-2 pr-2 transition-colors theme-surface-hover-bg"
-          >
-            <Logo className="w-8 h-8 ml-1 text-(--color-accent)" />
-            <span className="text-xl font-bold tracking-tight theme-text">Stacky</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="flex shrink-0 items-center gap-2 rounded-xl py-2 px-2 -ml-2 transition-colors theme-surface-hover-bg"
+            >
+              <Logo className="w-8 h-8 text-(--color-accent)" />
+              <span className="text-xl font-bold tracking-tight theme-text">Stacky</span>
+            </button>
+          </div>
 
           <nav className="flex flex-1 items-center justify-end gap-2 sm:gap-3">
             <div className="h-6 w-px theme-bg-subtle" style={{ background: 'var(--color-border)' }} aria-hidden />
 
             <div className="flex items-center gap-2">
               <ThemeToggle />
-              <ShortcutsButton
-                onClick={() => setShortcutsOpen(true)}
-                aria-expanded={shortcutsOpen}
+              <div className="hidden sm:block">
+                <ShortcutsButton
+                  onClick={() => setShortcutsOpen(true)}
+                  aria-expanded={shortcutsOpen}
+                />
+              </div>
+              <NotificationButton
+                onClick={() => setNotificationsOpen(!notificationsOpen)}
+                active={notificationsOpen}
               />
               <div className="relative">
                 <button
@@ -430,6 +475,7 @@ export function Dashboard() {
                 </button>
                 {profileOpen && <ProfilePopup onClose={() => setProfileOpen(false)} />}
               </div>
+              {notificationsOpen && <NotificationPopup onClose={() => setNotificationsOpen(false)} />}
             </div>
           </nav>
         </div>
@@ -447,8 +493,13 @@ export function Dashboard() {
           onNewWorkspace={() => navigate('/workspaces/new')}
           onNewProject={() => setNewProjectOpen(true)}
           loading={wsLoading}
+          deletingId={deletingId}
           collapsed={sidebarCollapsed}
           onToggleCollapse={toggleSidebar}
+          mobileOpen={mobileMenuOpen}
+          setMobileOpen={setMobileMenuOpen}
+          onEditWorkspace={(id) => handleEditWorkspace(id)}
+          onDeleteWorkspace={handleDeleteWorkspace}
         />
         <main className="min-w-0 flex-1 overflow-auto px-4 py-6 sm:px-6">
           {wsLoading && <DashboardSkeleton />}
@@ -506,16 +557,16 @@ export function Dashboard() {
                   style={{ pointerEvents: 'none' }}
                 />
 
-                <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                  <div>
-                    <div className={`mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wider theme-text-faint ${!introShown ? 'animate-fade-in' : ''}`}>
-                      <span>{currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
-                      <span className="h-1 w-1 rounded-full bg-current opacity-50" />
+                <div className="relative z-10 flex flex-row items-end justify-between gap-2 sm:gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className={`mb-1 sm:mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] sm:text-xs font-medium uppercase tracking-wider theme-text-faint ${!introShown ? 'animate-fade-in' : ''}`}>
+                      <span>{currentTime.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                      <span className="h-1 w-1 rounded-full bg-current opacity-50 hidden sm:block" />
                       <span>{currentTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
                     </div>
 
                     <h1
-                      className="text-2xl font-semibold tracking-tight sm:text-3xl font-display"
+                      className="text-lg leading-tight sm:text-3xl font-semibold tracking-tight font-display truncate"
                       style={{ color: 'var(--color-text)' }}
                     >
                       {getGreeting()}, <span className="animate-wave">👋</span>{' '}
@@ -523,19 +574,19 @@ export function Dashboard() {
                         {profile?.displayName?.trim().split(/\s+/)[0] || 'there'}
                       </span>
                     </h1>
-                    <p className={`mt-1 text-sm theme-text-muted ${!introShown ? 'animate-reveal-slide' : ''}`}>
+                    <p className={`mt-0.5 text-xs sm:text-sm theme-text-muted truncate ${!introShown ? 'animate-reveal-slide' : ''}`}>
                       Ready to conquer your tasks today?
                     </p>
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 shrink-0 mb-0.5">
                     <button
                       type="button"
                       onClick={() => setCalendarOpen(true)}
-                      className="rounded-2xl theme-surface-bg theme-border border p-3.5 text-sm font-medium theme-text transition-all duration-200 theme-surface-hover-bg hover:scale-[1.05] active:scale-[0.98] flex items-center justify-center"
+                      className="rounded-xl theme-surface-bg theme-border border p-2 sm:p-3.5 text-sm font-medium theme-text transition-all duration-200 theme-surface-hover-bg hover:scale-[1.05] active:scale-[0.98] flex items-center justify-center"
                       aria-label="Open calendar"
                     >
-                      <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                      <svg className="h-5 w-5 sm:h-6 sm:w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
                         <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
                         <path d="M3.5 9.5h17" />
                         <path d="M8.5 3.5v3" />
@@ -545,10 +596,10 @@ export function Dashboard() {
                     <button
                       type="button"
                       onClick={handleConnectCalendar}
-                      className="rounded-2xl theme-surface-bg theme-border border p-3.5 text-sm font-medium theme-text transition-all duration-200 theme-surface-hover-bg hover:scale-[1.05] active:scale-[0.98] flex items-center justify-center"
+                      className="rounded-xl theme-surface-bg theme-border border p-2 sm:p-3.5 text-sm font-medium theme-text transition-all duration-200 theme-surface-hover-bg hover:scale-[1.05] active:scale-[0.98] flex items-center justify-center"
                       title="Sync with Google Calendar"
                     >
-                      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+                      <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         <circle cx="12" cy="13" r="2" fill="currentColor" className="opacity-50" />
                       </svg>
@@ -594,15 +645,6 @@ export function Dashboard() {
                   >
                     New task
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteWorkspace(currentWorkspace.id, currentWorkspace.name)}
-                    disabled={deletingId === currentWorkspace.id}
-                    className="rounded-2xl border border-red-500/40 px-4 py-2.5 text-sm text-red-400 transition-colors hover:bg-red-500/10 hover:border-red-500/60 hover:text-red-300 disabled:opacity-50"
-                    title="Delete this workspace"
-                  >
-                    {deletingId === currentWorkspace.id ? 'Deleting…' : 'Delete workspace'}
-                  </button>
                 </div>
               </div>
 
@@ -620,7 +662,7 @@ export function Dashboard() {
                     {inProgress.slice(0, maxInProgress).map((t) => (
                       <li
                         key={t.id}
-                        className="glass-strong flex items-center justify-between gap-3 rounded-2xl px-5 py-4 transition-all duration-300 theme-surface-hover-bg"
+                        className="glass-strong flex items-center justify-between gap-2 sm:gap-3 rounded-2xl px-4 py-3 sm:px-5 sm:py-4 transition-all duration-300 theme-surface-hover-bg"
                       >
                         <div className="min-w-0 flex-1">
                           <button
@@ -680,8 +722,8 @@ export function Dashboard() {
                             })()}
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="rounded-xl theme-surface-bg theme-border border px-2.5 py-1 text-xs font-medium theme-text-muted">
+                        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                          <span className="hidden sm:inline-block rounded-xl theme-surface-bg theme-border border px-2.5 py-1 text-xs font-medium theme-text-muted">
                             {t.priority}
                           </span>
                           <button
@@ -698,10 +740,10 @@ export function Dashboard() {
                             type="button"
                             onClick={() => openDoneModal(t.id)}
                             disabled={updatingTaskId === t.id}
-                            className="rounded-xl theme-surface-bg theme-border border px-3 py-1.5 text-xs font-medium theme-text theme-surface-hover-bg disabled:opacity-50"
+                            className="rounded-xl theme-surface-bg theme-border border px-2.5 py-1.5 sm:px-3 sm:py-1.5 text-xs font-medium theme-text theme-surface-hover-bg disabled:opacity-50"
                             title="Mark done"
                           >
-                            {updatingTaskId === t.id ? 'Completing…' : 'Done'}
+                            {updatingTaskId === t.id ? '…' : 'Done'}
                           </button>
                         </div>
                       </li>
@@ -749,7 +791,7 @@ export function Dashboard() {
                       .map((t) => (
                         <li
                           key={t.id}
-                          className="glass-strong flex items-center justify-between gap-3 rounded-2xl px-5 py-4 transition-all duration-300 theme-surface-hover-bg"
+                          className="glass-strong flex items-center justify-between gap-2 sm:gap-3 rounded-2xl px-4 py-3 sm:px-5 sm:py-4 transition-all duration-300 theme-surface-hover-bg"
                         >
                           <div className="min-w-0 flex-1">
                             <button
@@ -783,8 +825,8 @@ export function Dashboard() {
                               })()}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <div className="relative group">
+                          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                            <div className="relative group hidden sm:block">
                               <select
                                 value={t.priority}
                                 onChange={(e) => {
@@ -813,7 +855,7 @@ export function Dashboard() {
                               type="button"
                               onClick={() => updateTask(t.id, { status: 'in_progress', startedAt: Timestamp.now() }, user?.uid || '')}
                               disabled={updatingTaskId === t.id || inProgress.length >= maxInProgress}
-                              className="rounded-xl theme-surface-bg theme-border border px-3 py-1.5 text-xs font-medium theme-text theme-surface-hover-bg disabled:opacity-50"
+                              className="rounded-xl theme-surface-bg theme-border border px-2.5 py-1.5 sm:px-3 sm:py-1.5 text-xs font-medium theme-text theme-surface-hover-bg disabled:opacity-50"
                               title={inProgress.length >= maxInProgress ? 'At limit — mark a task done first' : 'Start working'}
                             >
                               {updatingTaskId === t.id ? '…' : 'Start'}
