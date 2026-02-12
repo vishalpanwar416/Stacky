@@ -63,14 +63,16 @@ npm run dev
 
 Open the URL shown (e.g. http://localhost:5173). Sign in with Google, create a workspace, then add tasks.
 
-## Data model
+## Documentation
 
-See [docs/DATA_MODEL.md](docs/DATA_MODEL.md) for collections (users, workspaces, projects, tasks, comments, activity) and security rules summary.
+See the [docs](./docs) folder for detailed documentation:
+- [Data Model](./docs/DATA_MODEL.md)
+- [Firebase Auth Setup](./docs/firebase-auth-setup.md)
+- [Changelog](./docs/CHANGELOG.md)
 
-## Tech stack
+### Tracking Updates
+Latest features and bug fixes are tracked in `docs/updates.json`. This file is dynamically loaded by the Login page to show the "What's New" section to users.
 
-- **Frontend:** React 19, TypeScript, Vite, Tailwind CSS 4, React Router
-- **Backend:** Firebase Auth, Firestore
 
 ## Roadmap (ideas)
 

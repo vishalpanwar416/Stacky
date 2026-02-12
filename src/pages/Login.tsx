@@ -105,6 +105,8 @@ function FeatureIcon({ name }: { name: string }) {
   }
 }
 
+import updates from '../../docs/updates.json'
+
 export function Login() {
   const { user, loading, signInWithGoogle, authError, clearAuthError } = useAuth()
 
@@ -209,51 +211,108 @@ export function Login() {
               Press <kbd className="rounded border px-1.5 py-0.5 font-mono text-[10px] theme-surface">?</kbd> in the app for all shortcuts.
             </p>
           </div>
+
+          {/* New: Updates Section */}
+          <div className="mt-12 w-full max-w-md hidden lg:block animate-fade-in">
+            <h2 className="text-sm font-semibold uppercase tracking-wider theme-page-muted mb-4 flex items-center gap-2">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10l4 4v10a2 2 0 01-2 2z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 3v3a1 1 0 001 1h3" />
+              </svg>
+              What's New
+            </h2>
+            <div className="space-y-4">
+              {updates.slice(0, 2).map((update, idx) => (
+                <div key={idx} className="relative pl-4 border-l-2 border-(--color-border) hover:border-(--color-accent)/50 transition-colors">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase ${update.type === 'feature' ? 'bg-indigo-500/20 text-indigo-400' : 'bg-amber-500/20 text-amber-400'
+                      }`}>
+                      {update.type}
+                    </span>
+                    <span className="text-[10px] theme-page-muted">{update.date}</span>
+                  </div>
+                  <h3 className="text-sm font-medium text-(--color-text)">{update.title}</h3>
+                  <p className="text-xs theme-page-muted mt-0.5 line-clamp-2">{update.description}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Feature cards (right on lg) */}
-        <section className="w-full mt-8 lg:mt-0 max-h-[60vh] overflow-auto lg:overflow-visible pr-1">
-          <h2 className="text-sm font-semibold uppercase tracking-wider theme-page-muted mb-5 text-center lg:text-left animate-fade-in">
-            How it helps you
-          </h2>
-          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 animate-stagger">
-            {features.map((f) => (
-              <li key={f.title}>
-                <div
-                  className="group rounded-2xl border p-4 sm:p-5 backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] hover:border-(--color-accent)/30 hover:shadow-lg hover:shadow-(--color-accent-muted)/20"
-                  style={{
-                    background: 'var(--color-surface)',
-                    borderColor: 'var(--color-border)',
-                  }}
-                >
-                  <div className="flex items-start gap-3">
-                    <div
-                      className="rounded-xl p-2 shrink-0 transition-colors duration-300 group-hover:opacity-100"
-                      style={{ background: 'var(--color-accent-muted)' }}
-                    >
-                      <FeatureIcon name={f.icon} />
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-sm sm:text-base" style={{ color: 'var(--color-text)' }}>
-                        {f.title}
-                      </h3>
-                      <p className="mt-1 text-xs sm:text-sm theme-page-muted leading-relaxed">
-                        {f.description}
-                      </p>
+        <section className="w-full mt-8 lg:mt-0 max-h-[60vh] overflow-auto lg:overflow-visible pr-1 flex flex-col gap-8">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wider theme-page-muted mb-5 text-center lg:text-left animate-fade-in">
+              How it helps you
+            </h2>
+            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 animate-stagger">
+              {features.map((f) => (
+                <li key={f.title}>
+                  <div
+                    className="group rounded-2xl border p-4 sm:p-5 backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] hover:border-(--color-accent)/30 hover:shadow-lg hover:shadow-(--color-accent-muted)/20"
+                    style={{
+                      background: 'var(--color-surface)',
+                      borderColor: 'var(--color-border)',
+                    }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className="rounded-xl p-2 shrink-0 transition-colors duration-300 group-hover:opacity-100"
+                        style={{ background: 'var(--color-accent-muted)' }}
+                      >
+                        <FeatureIcon name={f.icon} />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-semibold text-sm sm:text-base" style={{ color: 'var(--color-text)' }}>
+                          {f.title}
+                        </h3>
+                        <p className="mt-1 text-xs sm:text-sm theme-page-muted leading-relaxed">
+                          {f.description}
+                        </p>
+                      </div>
                     </div>
                   </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Mobile Updates Section */}
+          <div className="lg:hidden mt-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wider theme-page-muted mb-4 text-center">
+              What's New
+            </h2>
+            <div className="space-y-4">
+              {updates.slice(0, 2).map((update, idx) => (
+                <div key={idx} className="rounded-2xl border p-4 backdrop-blur-sm" style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${update.type === 'feature' ? 'bg-indigo-500/20 text-indigo-400' : 'bg-amber-500/20 text-amber-400'
+                      }`}>
+                      {update.type}
+                    </span>
+                    <span className="text-[10px] theme-page-muted">{update.date}</span>
+                  </div>
+                  <h3 className="text-sm font-medium text-(--color-text)">{update.title}</h3>
+                  <p className="text-xs theme-page-muted mt-1">{update.description}</p>
                 </div>
-              </li>
-            ))}
-          </ul>
+              ))}
+            </div>
+          </div>
         </section>
       </main>
 
       <footer className="border-t py-3 sm:py-4" style={{ borderColor: 'var(--color-border)' }}>
-        <p className="text-center text-xs theme-page-muted">
-          Open source · React 19 · TypeScript · Vite · Tailwind CSS 4 · Firebase Auth & Firestore
-        </p>
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-2">
+          <p className="text-xs theme-page-muted text-center sm:text-left">
+            Open source · React 19 · TypeScript · Vite · Tailwind CSS 4 · Firebase Auth & Firestore
+          </p>
+          <div className="flex gap-4">
+            <a href="/docs/CHANGELOG.md" className="text-xs theme-page-muted hover:text-(--color-accent) transition-colors">Changelog</a>
+            <a href="/docs/DATA_MODEL.md" className="text-xs theme-page-muted hover:text-(--color-accent) transition-colors">Documentation</a>
+          </div>
+        </div>
       </footer>
+
     </div>
   )
 }

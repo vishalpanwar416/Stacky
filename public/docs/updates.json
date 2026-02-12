@@ -1,0 +1,23 @@
+[
+    {
+        "date": "2025-02-12",
+        "version": "1.1.0",
+        "type": "feature",
+        "title": "Documentation & Updates Center",
+        "description": "Added a new documentation folder and a dynamic updates section on the login page to keep users informed about the latest changes."
+    },
+    {
+        "date": "2025-01-11",
+        "version": "1.0.5",
+        "type": "bugfix",
+        "title": "Invitation Logic Fixes",
+        "description": "Resolved issues with workspace invitations and implemented real-time notifications."
+    },
+    {
+        "date": "2025-01-10",
+        "version": "1.0.4",
+        "type": "feature",
+        "title": "GCP Project Integration",
+        "description": "Improved connectivity with GCP projects for smoother development workflows."
+    }
+]
