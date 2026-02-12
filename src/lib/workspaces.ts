@@ -98,23 +98,56 @@ export async function getWorkspacesForUser(userId: string): Promise<Workspace[]>
 }
 
 export function subscribeWorkspaces(userId: string, callback: (workspaces: Workspace[]) => void): Unsubscribe {
-  const q = query(
+  const ownedQ = query(
+    collection(getDb(), WORKSPACES),
+    where('ownerId', '==', userId)
+  )
+
+  const memberQ = query(
     collection(getDb(), WORKSPACES),
     where('memberIds', 'array-contains', userId)
   )
 
-  return onSnapshot(q, (snap) => {
-    const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Workspace))
+  let ownedList: Workspace[] = []
+  let memberList: Workspace[] = []
+
+  const update = () => {
+    const map = new Map<string, Workspace>()
+    ownedList.forEach((w) => map.set(w.id, w))
+    memberList.forEach((w) => map.set(w.id, w))
+
+    const list = Array.from(map.values())
     list.sort((a, b) => {
       const aTime = a.updatedAt && typeof a.updatedAt.toMillis === 'function' ? a.updatedAt.toMillis() : 0
       const bTime = b.updatedAt && typeof b.updatedAt.toMillis === 'function' ? b.updatedAt.toMillis() : 0
       return bTime - aTime
     })
     callback(list)
+  }
+
+  const unsubOwned = onSnapshot(ownedQ, (snap) => {
+    ownedList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Workspace))
+    update()
   }, (err) => {
-    console.error('Workspaces subscription error:', err)
-    callback([])
+    console.error('Owned workspaces subscription error:', err)
+    // Create new array to avoid reference issues if needed, but simple assignment is fine
+    ownedList = []
+    update()
   })
+
+  const unsubMember = onSnapshot(memberQ, (snap) => {
+    memberList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Workspace))
+    update()
+  }, (err) => {
+    console.error('Member workspaces subscription error:', err)
+    memberList = []
+    update()
+  })
+
+  return () => {
+    unsubOwned()
+    unsubMember()
+  }
 }
 
 export async function updateWorkspace(
