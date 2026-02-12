@@ -4,10 +4,11 @@ import { useAuth } from '../contexts/AuthContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { useToast } from '../contexts/ToastContext'
 import { getTask, updateTask, addComment, subscribeComments, subscribeActivity, getTasksByWorkspace } from '../lib/tasks'
+import { getProjectsByWorkspace } from '../lib/projects'
 import { getCountdown } from '../lib/taskUtils'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { TaskDetailSkeleton } from '../components/Skeleton'
-import type { Task, TaskComment, TaskActivity, TaskStatus } from '../types'
+import type { Task, TaskComment, TaskActivity, TaskStatus, Project } from '../types'
 
 const STATUSES: TaskStatus[] = ['backlog', 'planned', 'in_progress', 'blocked', 'done']
 
@@ -60,6 +61,9 @@ export function TaskDetail() {
   const [workspaceTasks, setWorkspaceTasks] = useState<Task[]>([])
   const [blockedByTask, setBlockedByTask] = useState<Task | null>(null)
   const [completionNote, setCompletionNote] = useState('')
+  const [projectId, setProjectId] = useState('')
+  const [workspaceId, setWorkspaceId] = useState('')
+  const [projects, setProjects] = useState<Project[]>([])
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
 
@@ -71,9 +75,16 @@ export function TaskDetail() {
   useEffect(() => {
     if (!id) return
     setStatus(task?.status ?? null)
+    setProjectId(task?.projectId ?? '')
+    setWorkspaceId(task?.workspaceId ?? '')
     if (task?.blockedByTaskId) setBlockedByTaskId(task.blockedByTaskId)
     else setBlockedByTaskId('')
-  }, [id, task?.status, task?.blockedByTaskId])
+  }, [id, task?.status, task?.blockedByTaskId, task?.projectId, task?.workspaceId])
+
+  useEffect(() => {
+    if (!workspaceId) return
+    getProjectsByWorkspace(workspaceId).then(setProjects).catch(() => setProjects([]))
+  }, [workspaceId])
 
   useEffect(() => {
     if (!id) return
@@ -118,11 +129,11 @@ export function TaskDetail() {
       setTask((t) =>
         t
           ? {
-              ...t,
-              status: newStatus,
-              completionNote: updates.completionNote ?? t.completionNote,
-              blockedByTaskId: newStatus === 'blocked' ? (blockedByTaskId || undefined) : t.blockedByTaskId,
-            }
+            ...t,
+            status: newStatus,
+            completionNote: updates.completionNote ?? t.completionNote,
+            blockedByTaskId: newStatus === 'blocked' ? (blockedByTaskId || undefined) : t.blockedByTaskId,
+          }
           : null
       )
       setStatus(newStatus)
@@ -130,6 +141,36 @@ export function TaskDetail() {
       toast('Status updated', 'success')
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Update failed', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleProjectChange = async (newProjectId: string) => {
+    if (!user || saving) return
+    setSaving(true)
+    try {
+      await updateTask(id, { projectId: newProjectId || undefined }, user.uid)
+      setProjectId(newProjectId)
+      toast('Project updated', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Update failed', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleWorkspaceChange = async (newWorkspaceId: string) => {
+    if (!user || saving) return
+    setSaving(true)
+    try {
+      // When moving to new workspace, we also clear the project since it won't exist there
+      await updateTask(id, { workspaceId: newWorkspaceId, projectId: undefined } as any, user.uid)
+      setWorkspaceId(newWorkspaceId)
+      setProjectId('')
+      toast('Moved to new workspace', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Move failed', 'error')
     } finally {
       setSaving(false)
     }
@@ -322,6 +363,41 @@ export function TaskDetail() {
               Mark done
             </button>
           )}
+
+          <div className="h-6 w-px theme-bg-subtle mx-1" />
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs theme-text-faint">Workspace</label>
+            <select
+              value={workspaceId}
+              onChange={(e) => handleWorkspaceChange(e.target.value)}
+              disabled={saving}
+              className="select-input"
+            >
+              {workspaces.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-xs theme-text-faint">Project</label>
+            <select
+              value={projectId}
+              onChange={(e) => handleProjectChange(e.target.value)}
+              disabled={saving}
+              className="select-input"
+            >
+              <option value="">No Project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 

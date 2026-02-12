@@ -115,7 +115,7 @@ export function subscribeTasksByWorkspace(
 
 export async function updateTask(
   id: string,
-  data: Partial<Pick<Task, 'title' | 'description' | 'status' | 'priority' | 'projectId' | 'dueDate' | 'dueTime' | 'estimatedMinutes' | 'reminderAt' | 'tags' | 'completionNote' | 'blockedReason' | 'blockedByTaskId' | 'timerElapsed' | 'timerLastStartedAt' | 'timerEnabled' | 'completedAt' | 'startedAt'>>,
+  data: Partial<Pick<Task, 'title' | 'description' | 'status' | 'priority' | 'projectId' | 'workspaceId' | 'dueDate' | 'dueTime' | 'estimatedMinutes' | 'reminderAt' | 'tags' | 'completionNote' | 'blockedReason' | 'blockedByTaskId' | 'timerElapsed' | 'timerLastStartedAt' | 'timerEnabled' | 'completedAt' | 'startedAt'>>,
   userId: string
 ) {
   const ref = doc(getDb(), TASKS, id)

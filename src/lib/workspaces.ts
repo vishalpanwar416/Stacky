@@ -23,7 +23,7 @@ const WORKSPACES = 'workspaces'
 const MEMBERS = 'members'
 
 export async function createWorkspace(
-  data: Omit<Workspace, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'> & { ownerId?: string },
+  data: Omit<Workspace, 'id' | 'createdAt' | 'updatedAt' | 'ownerId' | 'memberIds'> & { ownerId?: string },
   ownerId: string,
   ownerDisplayName?: string,
   ownerEmail?: string

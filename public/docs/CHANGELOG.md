@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2025-02-12
+### Added
+- Task portability: Users can now move tasks between different projects and workspaces.
+- Project and Workspace selectors in Task Detail view.
+
 ## [1.1.0] - 2025-02-12
 ### Added
 - New `docs` folder for project documentation.
