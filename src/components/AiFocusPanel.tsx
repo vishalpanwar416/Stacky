@@ -177,7 +177,9 @@ export function AiFocusPanel({ workspaceId, tasks, projects, userId }: Props) {
     .filter((t): t is Task => Boolean(t))
 
   return (
-    <section className="glass-strong mb-8 rounded-3xl border p-6 theme-border">
+    // Rendered inside the greeting card, so this is a divider rather than its
+    // own card. z-10 clears that card's decorative background layers.
+    <section className="relative z-10 mt-5 border-t pt-4 theme-border">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold theme-text">Focus</span>

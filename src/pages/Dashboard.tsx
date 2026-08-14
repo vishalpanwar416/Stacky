@@ -629,6 +629,15 @@ export function Dashboard() {
                     </button>
                   </div>
                 </div>
+
+                {currentWorkspace && user && (
+                  <AiFocusPanel
+                    workspaceId={currentWorkspace.id}
+                    tasks={tasks}
+                    projects={projects}
+                    userId={user.uid}
+                  />
+                )}
               </div>
               <div className="mb-6 flex flex-wrap items-center justify-between gap-3 animate-fade-in">
                 <h2 className="text-xl font-semibold theme-text tracking-tight">{currentWorkspace.name}</h2>
@@ -681,15 +690,6 @@ export function Dashboard() {
                   </button>
                 </div>
               </div>
-
-              {currentWorkspace && user && (
-                <AiFocusPanel
-                  workspaceId={currentWorkspace.id}
-                  tasks={tasks}
-                  projects={projects}
-                  userId={user.uid}
-                />
-              )}
 
               <div className="grid gap-8 xl:grid-cols-2">
                 <section>
