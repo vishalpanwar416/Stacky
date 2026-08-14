@@ -102,5 +102,12 @@ service cloud.firestore {
     match /task_dependencies/{depId} {
       allow read, write: if isSignedIn();
     }
+
+    // Cached AI analysis, one document per workspace (doc id == workspaceId).
+    // Holds no data the member can't already read — it is derived from their
+    // own tasks — so workspace membership is the whole check.
+    match /aiInsights/{workspaceId} {
+      allow read, write: if isWorkspaceMember(workspaceId);
+    }
   }
 }

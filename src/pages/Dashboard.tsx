@@ -22,6 +22,7 @@ import { DashboardSidebar } from '../components/DashboardSidebar'
 import { WelcomeOverlay } from '../components/WelcomeOverlay'
 import { TaskTimer } from '../components/TaskTimer'
 import { WorkspaceSettingsModal } from '../components/WorkspaceSettingsModal'
+import { AiFocusPanel } from '../components/AiFocusPanel'
 import type { Task, Project, Workspace } from '../types'
 
 const statusOrder: Task['status'][] = ['in_progress', 'blocked', 'planned', 'backlog', 'done']
@@ -661,6 +662,15 @@ export function Dashboard() {
                   </button>
                 </div>
               </div>
+
+              {currentWorkspace && user && (
+                <AiFocusPanel
+                  workspaceId={currentWorkspace.id}
+                  tasks={tasks}
+                  projects={projects}
+                  userId={user.uid}
+                />
+              )}
 
               <div className="grid gap-8 xl:grid-cols-2">
                 <section>

@@ -1,0 +1,5 @@
+# Local-only tooling — never upload to Vercel.
+# The MCP server holds a Firestore service account key and must stay off the CDN.
+mcp
+server
+**/serviceAccountKey.json
