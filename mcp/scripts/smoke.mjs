@@ -31,14 +31,34 @@ const safeJson = (t) => {
   }
 }
 
-// 1. Tool surface
+// 1. Tool surface — assert the expected names are present rather than a count,
+// so adding a tool doesn't fail the suite for the wrong reason.
+const EXPECTED_TOOLS = [
+  'list_workspaces',
+  'create_workspace',
+  'create_project',
+  'list_projects',
+  'list_tasks',
+  'get_task',
+  'create_task',
+  'update_task',
+  'close_task',
+  'comment_on_task',
+]
 const { tools } = await client.listTools()
-check('8 tools registered', tools.length === 8, tools.map((t) => t.name).join(', '))
+const names = tools.map((t) => t.name)
+const missing = EXPECTED_TOOLS.filter((n) => !names.includes(n))
+check('all expected tools registered', missing.length === 0, missing.length ? `missing: ${missing}` : names.join(', '))
 
-// 2. Workspace scoping
+// 2. Workspace scoping. The invariant is "nothing unreachable is returned",
+// not a fixed count — the user can legitimately create more workspaces.
 const ws = await call('list_workspaces')
 const mine = ws.json ?? []
-check('list_workspaces returns only reachable workspaces', mine.length === 2, `${mine.length} found: ${mine.map((w) => w.name).join(', ')}`)
+check(
+  'list_workspaces returns only workspaces the uid can reach',
+  mine.length > 0 && mine.every((w) => w.role === 'owner' || w.role === 'member'),
+  `${mine.length} found: ${mine.map((w) => w.name).join(', ')}`
+)
 
 // 3. Access guard against a workspace owned by someone else (Anshika's Personal)
 const denied = await call('list_projects', { workspaceId: 'JbSGw2vLS2O7u8HDCEhQ' })

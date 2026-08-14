@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { STACKY_USER_ID } from './config.js'
 import { PROJECTS, TASKS, db } from './firestore.js'
 import { AccessError, assertTask, assertWorkspace, chunk, listWorkspaces } from './scope.js'
+import { createProject, createWorkspace } from './admin.js'
 import { addComment, createTask, serializeTask, updateTask } from './tasks.js'
 
 const server = new McpServer({ name: 'stacky', version: '0.1.0' })
@@ -52,6 +53,43 @@ server.registerTool(
         role: w.ownerId === STACKY_USER_ID ? 'owner' : 'member',
       }))
     )
+  })
+)
+
+server.registerTool(
+  'create_workspace',
+  {
+    title: 'Create workspace',
+    description:
+      'Create a new workspace owned by you. Use only when the user explicitly asks for a new workspace — most work belongs in an existing one.',
+    inputSchema: {
+      name: z.string().min(1),
+      description: z.string().optional(),
+      visibility: z.enum(['private', 'shared']).optional(),
+    },
+  },
+  guard(async (args) => {
+    const id = await createWorkspace(args)
+    return ok({ id, created: true, name: args.name })
+  })
+)
+
+server.registerTool(
+  'create_project',
+  {
+    title: 'Create project',
+    description: 'Create a project inside a workspace, for grouping related tasks.',
+    inputSchema: {
+      workspaceId: z.string().describe('From list_workspaces'),
+      name: z.string().min(1),
+      description: z.string().optional(),
+      status: z.enum(['active', 'on_hold', 'completed']).optional(),
+      health: z.enum(['on_track', 'at_risk', 'behind']).optional(),
+    },
+  },
+  guard(async (args) => {
+    const id = await createProject(args)
+    return ok({ id, created: true, name: args.name, workspaceId: args.workspaceId })
   })
 )
 

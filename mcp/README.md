@@ -12,6 +12,8 @@ you → Claude → stacky-mcp (stdio) → Firestore (Admin SDK) → stackyy.verc
 | Tool | What it does |
 | --- | --- |
 | `list_workspaces` | Workspaces you own or belong to. Start here — everything else needs a `workspaceId`. |
+| `create_workspace` | Create a workspace you own, including the `members` record the UI reads. |
+| `create_project` | Create a project inside a workspace. |
 | `list_projects` | Projects inside a workspace. |
 | `list_tasks` | Tasks, newest first. Filter by workspace, project, status, or tag. Omit `workspaceId` to search everywhere. |
 | `get_task` | One task in full, with comments and activity history. |
