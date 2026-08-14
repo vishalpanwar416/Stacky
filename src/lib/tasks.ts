@@ -3,6 +3,7 @@ import {
   doc,
   addDoc,
   getDoc,
+  getDocFromCache,
   getDocs,
   updateDoc,
   deleteDoc,
@@ -119,7 +120,15 @@ export async function updateTask(
   userId: string
 ) {
   const ref = doc(getDb(), TASKS, id)
-  const prev = await getDoc(ref)
+  // Prefer the local cache. Any screen calling this is already subscribed to
+  // the task, so the document is in memory — going to the server here adds a
+  // round trip before the write, which the user sees as a dead click.
+  let prev
+  try {
+    prev = await getDocFromCache(ref)
+  } catch {
+    prev = await getDoc(ref)
+  }
   const prevData = prev.data()
   const updates: Record<string, unknown> = { ...data, updatedAt: serverTimestamp() }
   if (data.status === 'done') {
@@ -138,19 +147,25 @@ export async function updateTask(
   Object.keys(updates).forEach((key) => {
     if (updates[key] === undefined) delete updates[key]
   })
+  // Write the change first. Firestore applies it to the local cache and fires
+  // snapshot listeners immediately, so the UI reacts on click rather than
+  // waiting on the server — and the activity writes below no longer sit in
+  // front of the thing the user actually asked for.
+  await updateDoc(ref, updates)
+
   if (data.status && prevData?.status !== data.status) {
-    await logActivity(id, userId, 'status_change', {
-      from: prevData?.status,
-      to: data.status,
-    })
+    // Audit trail, not user-blocking: never make the interaction wait on it.
+    const entries: Promise<unknown>[] = [
+      logActivity(id, userId, 'status_change', { from: prevData?.status, to: data.status }),
+    ]
     if (data.status === 'blocked' && data.blockedReason) {
-      await logActivity(id, userId, 'blocked', { reason: data.blockedReason })
+      entries.push(logActivity(id, userId, 'blocked', { reason: data.blockedReason }))
     }
     if (data.status === 'done') {
-      await logActivity(id, userId, 'completed', {})
+      entries.push(logActivity(id, userId, 'completed', {}))
     }
+    void Promise.all(entries).catch((err) => console.warn('Activity log failed:', err))
   }
-  await updateDoc(ref, updates)
 }
 
 

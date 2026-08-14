@@ -775,6 +775,23 @@ export function Dashboard() {
                           </span>
                           <button
                             type="button"
+                            onClick={() => {
+                              captureFlip(t.id)
+                              // Bank any running timer segment first, so time
+                              // spent on the task isn't lost by stopping.
+                              if (t.timerLastStartedAt) void toggleTaskTimer(t).catch(() => {})
+                              void updateTask(t.id, { status: 'planned' }, user?.uid || '')
+                            }}
+                            className="rounded-xl p-1.5 text-xs font-medium theme-text-muted hover:theme-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                            title="Move back to queue"
+                            aria-label="Move back to queue"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7-7 7M21 12H3" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => navigate(`/tasks/${t.id}`)}
                             className="rounded-xl p-1.5 text-xs font-medium theme-text-muted hover:theme-text hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
                             title="Edit task"
