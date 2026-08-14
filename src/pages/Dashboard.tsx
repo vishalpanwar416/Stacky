@@ -8,6 +8,7 @@ import { getCountdown as getTaskCountdown } from '../lib/taskUtils'
 import { deleteWorkspace, updateWorkspace } from '../lib/workspaces'
 import { getProjectsByWorkspace, createProject } from '../lib/projects'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
+import { useTaskFlip } from '../hooks/useTaskFlip'
 import { ShortcutsModal } from '../components/ShortcutsModal'
 import { ShortcutsButton } from '../components/ShortcutsButton'
 import { NotificationButton } from '../components/NotificationButton'
@@ -113,6 +114,8 @@ export function Dashboard() {
   const maxInProgress = profile?.preferences?.maxInProgress ?? MAX_IN_PROGRESS
   const [tasks, setTasks] = useState<Task[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
+  // Animates a card travelling between the queue and the in-progress list.
+  const captureFlip = useTaskFlip(tasks)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [editingWorkspaceTab, setEditingWorkspaceTab] = useState<'general' | 'members'>('general')
   const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null)
@@ -705,6 +708,7 @@ export function Dashboard() {
                     {inProgress.slice(0, maxInProgress).map((t) => (
                       <li
                         key={t.id}
+                        data-flip-task={t.id}
                         className="glass-strong flex items-center justify-between gap-2 sm:gap-3 rounded-2xl px-4 py-3 sm:px-5 sm:py-4 transition-all duration-300 theme-surface-hover-bg"
                       >
                         <div className="min-w-0 flex-1">
@@ -823,6 +827,7 @@ export function Dashboard() {
                       .map((t) => (
                         <li
                           key={t.id}
+                          data-flip-task={t.id}
                           className="glass-strong flex items-center justify-between gap-2 sm:gap-3 rounded-2xl px-4 py-3 sm:px-5 sm:py-4 transition-all duration-300 theme-surface-hover-bg"
                         >
                           <div className="min-w-0 flex-1">
@@ -885,7 +890,16 @@ export function Dashboard() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => updateTask(t.id, { status: 'in_progress', startedAt: Timestamp.now() }, user?.uid || '')}
+                              onClick={() => {
+                                // Record where the card sits in the queue before
+                                // the status change unmounts it from this list.
+                                captureFlip(t.id)
+                                void updateTask(
+                                  t.id,
+                                  { status: 'in_progress', startedAt: Timestamp.now() },
+                                  user?.uid || ''
+                                )
+                              }}
                               disabled={updatingTaskId === t.id || inProgress.length >= maxInProgress}
                               className="rounded-xl theme-surface-bg theme-border border px-2.5 py-1.5 sm:px-3 sm:py-1.5 text-xs font-medium theme-text theme-surface-hover-bg disabled:opacity-50"
                               title={inProgress.length >= maxInProgress ? 'At limit — mark a task done first' : 'Start working'}
