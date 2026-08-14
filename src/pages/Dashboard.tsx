@@ -277,6 +277,25 @@ export function Dashboard() {
   const tasksByProject = projectFilter ? tasks.filter((t) => t.projectId === projectFilter) : tasks
   const inProgress = filterTasksBySearch(tasksByProject.filter((t) => t.status === 'in_progress'))
   const queue = filterTasksBySearch(sortTasks(tasksByProject.filter((t) => t.status !== 'done')))
+
+  /**
+   * The queue as actually rendered. The day filter is a "due within N days"
+   * horizon, so it only has an opinion about tasks that carry a due date —
+   * an undated task isn't due later than the cutoff, it simply has no date,
+   * and hiding it made every quick-capture task invisible under the default
+   * "Today only" view.
+   */
+  const visibleQueue = queue
+    .filter((t) => t.status !== 'in_progress')
+    .filter((t) => {
+      if (queueFilterDays === 100) return true
+      if (!t.dueDate || typeof t.dueDate.toDate !== 'function') return true
+      const now = new Date()
+      now.setHours(0, 0, 0, 0)
+      const cutoff = new Date(now)
+      cutoff.setDate(now.getDate() + queueFilterDays)
+      return t.dueDate.toDate() < cutoff
+    })
   const completed = filterTasksBySearch(
     tasksByProject
       .filter((t) => t.status === 'done')
@@ -800,18 +819,7 @@ export function Dashboard() {
                     </select>
                   </div>
                   <ul className="space-y-3 animate-stagger">
-                    {queue
-                      .filter((t) => t.status !== 'in_progress')
-                      .filter((t) => {
-                        if (queueFilterDays === 100) return true
-                        if (!t.dueDate) return false
-                        const date = t.dueDate.toDate() // Firestore Timestamp
-                        const now = new Date()
-                        now.setHours(0, 0, 0, 0)
-                        const cutoff = new Date(now)
-                        cutoff.setDate(now.getDate() + queueFilterDays)
-                        return date < cutoff
-                      })
+                    {visibleQueue
                       .map((t) => (
                         <li
                           key={t.id}
@@ -887,10 +895,25 @@ export function Dashboard() {
                           </div>
                         </li>
                       ))}
-                    {queue.length === 0 && (
+                    {visibleQueue.length === 0 && (
                       <li className="glass rounded-2xl border border-dashed theme-border py-8 text-center">
-                        <p className="theme-text-muted">No tasks in queue.</p>
-                        <p className="mt-1 text-sm theme-text-faint">Add a task with <strong className="theme-text-muted">New task</strong> or press <kbd className="rounded theme-surface-bg px-1.5 py-0.5 text-xs theme-text-muted">N</kbd> to get started.</p>
+                        {queue.filter((t) => t.status !== 'in_progress').length > 0 ? (
+                          <>
+                            <p className="theme-text-muted">Nothing due in this range.</p>
+                            <button
+                              type="button"
+                              onClick={() => setQueueFilterDays(100)}
+                              className="mt-1 text-sm theme-text-faint underline-offset-2 hover:underline hover:theme-text"
+                            >
+                              Show all upcoming instead
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <p className="theme-text-muted">No tasks in queue.</p>
+                            <p className="mt-1 text-sm theme-text-faint">Add a task with <strong className="theme-text-muted">New task</strong> or press <kbd className="rounded theme-surface-bg px-1.5 py-0.5 text-xs theme-text-muted">N</kbd> to get started.</p>
+                          </>
+                        )}
                       </li>
                     )}
                   </ul>
