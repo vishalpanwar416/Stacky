@@ -1,5 +1,5 @@
 import { collection, query, where, getDocs, limit, doc, updateDoc, serverTimestamp } from 'firebase/firestore'
-import { getDb } from './firebase'
+import { getAuth, getDb } from './firebase'
 import type { UserProfile } from '../types'
 
 const USERS = 'users'
@@ -20,16 +20,27 @@ export async function updateUserPreferences(
   await updateDoc(userRef, updates)
 }
 
-export async function getUserByEmail(email: string): Promise<UserProfile | null> {
-  const q = query(
-    collection(getDb(), USERS),
-    where('email', '==', email),
-    limit(1)
-  )
-  const snap = await getDocs(q)
-  if (snap.empty) return null
-  const d = snap.docs[0]
-  return { id: d.id, ...d.data() } as UserProfile
+/**
+ * Resolves an email to a user id, if that person has an account.
+ *
+ * Goes through the server rather than querying the users collection directly:
+ * Firestore rules are per-document, so permitting this query would permit
+ * reading any profile. The route returns an id and nothing else.
+ */
+export async function getUserByEmail(email: string): Promise<{ id: string } | null> {
+  const user = getAuth().currentUser
+  if (!user) return null
+  const res = await fetch('/api/user-lookup', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${await user.getIdToken()}`,
+    },
+    body: JSON.stringify({ email }),
+  })
+  if (!res.ok) return null
+  const { userId } = await res.json()
+  return userId ? { id: userId } : null
 }
 
 export async function searchUsers(searchTerm: string): Promise<UserProfile[]> {
