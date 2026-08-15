@@ -57,10 +57,10 @@ export function AppHeader({
           className="flex shrink-0 items-center gap-2 rounded-xl py-2 px-2 -ml-2 transition-colors theme-surface-hover-bg"
         >
           <Logo className="w-8 h-8 text-(--color-accent)" />
-          <span className="text-xl font-bold tracking-tight theme-text">Stacky</span>
+          <span className="hidden text-xl font-bold tracking-tight theme-text sm:inline">Stacky</span>
         </button>
 
-        <nav className="flex flex-1 items-center justify-end gap-2 sm:gap-3">
+        <nav className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3">
           {children}
 
           <div

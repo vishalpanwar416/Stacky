@@ -511,7 +511,7 @@ export function Dashboard() {
           onToggleCollapse={toggleSidebar}
           mobileOpen={mobileMenuOpen}
           setMobileOpen={setMobileMenuOpen}
-          onEditWorkspace={(id) => handleEditWorkspace(id)}
+          onEditWorkspace={(id, _name, tab) => handleEditWorkspace(id, tab)}
           onDeleteWorkspace={handleDeleteWorkspace}
         />
         <main className="min-w-0 flex-1 overflow-auto px-4 py-6 sm:px-6">

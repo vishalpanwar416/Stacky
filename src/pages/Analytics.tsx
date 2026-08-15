@@ -4,10 +4,13 @@ import { useWorkspace } from '../contexts/WorkspaceContext'
 import { subscribeTasksByWorkspace } from '../lib/tasks'
 import { getProjectsByWorkspace } from '../lib/projects'
 import { AppHeader } from '../components/AppHeader'
+import { WorkspaceSettingsModal } from '../components/WorkspaceSettingsModal'
+import { updateWorkspace } from '../lib/workspaces'
+import { useToast } from '../contexts/ToastContext'
 import { OverviewInsight } from '../components/OverviewInsight'
 import type { OverviewMetrics } from '../lib/ai'
 import { DashboardSidebar } from '../components/DashboardSidebar'
-import type { Task, Project } from '../types'
+import type { Task, Project, Workspace } from '../types'
 
 /* ─── colour tokens ──────────────────────────────────────────── */
 /**
@@ -189,7 +192,13 @@ function getDateKey(d: Date) {
 /* ─── main component ─────────────────────────────────────────── */
 export function Analytics() {
   const navigate = useNavigate()
-  const { workspaces, currentWorkspace, setCurrentWorkspaceId, loading: wsLoading } = useWorkspace()
+  const { workspaces, currentWorkspace, setCurrentWorkspaceId, refreshWorkspaces, loading: wsLoading } = useWorkspace()
+  const { toast } = useToast()
+  // Overview is the landing page, so workspace administration has to be
+  // reachable from here. It used to bounce to /tasks, which looked like a
+  // dead menu item: the click navigated away and opened nothing.
+  const [editingWorkspace, setEditingWorkspace] = useState<Workspace | null>(null)
+  const [editingTab, setEditingTab] = useState<'general' | 'members'>('general')
   const [tasks, setTasks] = useState<Task[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
@@ -388,12 +397,26 @@ export function Analytics() {
 
   return (
     <div className="flex min-h-screen flex-col" style={{ background: 'var(--color-bg)' }}>
+      {editingWorkspace && (
+        <WorkspaceSettingsModal
+          isOpen={!!editingWorkspace}
+          onClose={() => setEditingWorkspace(null)}
+          workspace={editingWorkspace}
+          initialTab={editingTab}
+          onUpdate={async (id, name, description) => {
+            await updateWorkspace(id, { name, description })
+            await refreshWorkspaces()
+            setEditingWorkspace(null)
+            toast('Workspace updated', 'success')
+          }}
+        />
+      )}
       <AppHeader onMenuClick={() => setMobileMenuOpen(true)}>
         {workspaces.length > 1 && (
           <select
             value={scopeId}
             onChange={(e) => setScopeId(e.target.value)}
-            className="select-input text-sm"
+            className="select-input min-w-0 max-w-[8rem] text-sm sm:max-w-none"
             aria-label="Workspaces included"
           >
             <option value="">All workspaces</option>
@@ -425,7 +448,13 @@ export function Analytics() {
         onToggleCollapse={toggleSidebar}
         mobileOpen={mobileMenuOpen}
         setMobileOpen={setMobileMenuOpen}
-        onEditWorkspace={() => navigate('/tasks')}
+        onEditWorkspace={(id, _name, tab) => {
+          const ws = workspaces.find((w) => w.id === id)
+          if (!ws) return
+          setEditingWorkspace(ws)
+          setEditingTab(tab ?? 'general')
+          setMobileMenuOpen(false)
+        }}
         onDeleteWorkspace={() => navigate('/tasks')}
       />
 
