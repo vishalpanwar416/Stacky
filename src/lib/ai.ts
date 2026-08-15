@@ -208,3 +208,118 @@ export function setAutoApply(enabled: boolean) {
 export function autoApplicable(suggestions: PrioritySuggestion[]): PrioritySuggestion[] {
   return suggestions.filter((s) => s.confidence === 'high')
 }
+
+/* ── Overview read ─────────────────────────────────────────────────── */
+
+export interface OverviewSignal {
+  label: string
+  tone: 'good' | 'watch' | 'risk'
+  detail: string
+}
+
+export interface OverviewInsight {
+  headline: string
+  /** How this reading compares with the one before it. */
+  change: 'first' | 'improved' | 'worse' | 'unchanged'
+  summary: string
+  signals: OverviewSignal[]
+  model: string
+  generatedAt: string
+  fingerprint: string
+}
+
+/** Metrics the charts already compute, sent instead of the raw task list. */
+export interface OverviewMetrics {
+  workspaces: number
+  total: number
+  done: number
+  inProgress: number
+  blocked: number
+  planned: number
+  backlog: number
+  overdue: number
+  completionRate: number
+  medianDaysToComplete: string | null
+  completedLast7Days: number[]
+  createdLast7Days: number[]
+  focusMinutes: number
+  topTags: { tag: string; count: number }[]
+  projects: { name: string; total: number; done: number }[]
+}
+
+/**
+ * The read only changes when the numbers do, so the fingerprint is the metrics
+ * themselves — re-opening the dashboard costs nothing.
+ */
+function fingerprintMetrics(m: OverviewMetrics): string {
+  return `${new Date().toISOString().slice(0, 10)}#${hash(JSON.stringify(m))}`
+}
+
+/** How many past reads to keep, so you can page back through them. */
+export const OVERVIEW_HISTORY_LIMIT = 12
+
+/**
+ * Past reads, newest first.
+ *
+ * Kept as a rolling list rather than a single document so the dashboard can
+ * show what it said earlier — a read is only useful in context, and "this is
+ * the third day running that the backlog grew" is the actual signal.
+ */
+export async function readOverviewHistory(): Promise<OverviewInsight[]> {
+  const user = getAuth().currentUser
+  if (!user) return []
+  const snap = await getDoc(doc(getDb(), 'aiOverview', user.uid)).catch(() => null)
+  if (!snap?.exists()) return []
+  const data = snap.data() as { history?: OverviewInsight[] }
+  return Array.isArray(data.history) ? data.history : []
+}
+
+export async function getOverviewInsight(
+  metrics: OverviewMetrics,
+  options: { force?: boolean } = {}
+): Promise<OverviewInsight> {
+  const user = getAuth().currentUser
+  if (!user) throw new Error('You need to be signed in.')
+  const fingerprint = fingerprintMetrics(metrics)
+  const ref = doc(getDb(), 'aiOverview', user.uid)
+
+  const history = await readOverviewHistory()
+  if (!options.force && history[0]?.fingerprint === fingerprint) return history[0]
+
+  const token = await user.getIdToken()
+  const res = await fetch('/api/ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      mode: 'overview',
+      metrics,
+      // What we said last time, so the model reports the change rather than
+      // restating the state the reader has already seen.
+      previous: history[0]
+        ? {
+            at: history[0].generatedAt,
+            headline: history[0].headline,
+            summary: history[0].summary,
+          }
+        : null,
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body.error ?? `Could not read the dashboard (${res.status}).`)
+  }
+
+  const insight: OverviewInsight = { ...(await res.json()), fingerprint }
+
+  // Don't let a timed refresh that found nothing new push a real reading out of
+  // the history — replace the last entry instead of stacking a duplicate.
+  const unchanged = insight.change === 'unchanged' && history.length > 0
+  const next = (unchanged ? [insight, ...history.slice(1)] : [insight, ...history]).slice(
+    0,
+    OVERVIEW_HISTORY_LIMIT
+  )
+  await setDoc(ref, { history: next, cachedAt: serverTimestamp() }).catch((err) =>
+    console.warn('Could not cache the overview read:', err)
+  )
+  return insight
+}

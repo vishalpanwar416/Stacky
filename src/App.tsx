@@ -11,6 +11,7 @@ import { Login } from './pages/Login'
 import { CreateWorkspace } from './pages/CreateWorkspace'
 import { NewTask } from './pages/NewTask'
 import { TaskDetail } from './pages/TaskDetail'
+import { Analytics } from './pages/Analytics'
 import { isFirebaseConfigured } from './lib/firebase'
 
 class ErrorBoundary extends Component<
@@ -105,7 +106,7 @@ function AppRoutes() {
         path="/"
         element={
           <ProtectedRoute>
-            <Dashboard />
+            <Analytics />
           </ProtectedRoute>
         }
       />
@@ -138,6 +139,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <TaskDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/tasks"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
           </ProtectedRoute>
         }
       />

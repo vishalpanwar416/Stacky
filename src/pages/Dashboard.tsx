@@ -10,13 +10,7 @@ import { getProjectsByWorkspace, createProject } from '../lib/projects'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useTaskFlip } from '../hooks/useTaskFlip'
 import { ShortcutsModal } from '../components/ShortcutsModal'
-import { ShortcutsButton } from '../components/ShortcutsButton'
-import { NotificationButton } from '../components/NotificationButton'
 import { CommandBar } from '../components/CommandBar'
-import { Logo } from '../components/Logo'
-import { ThemeToggle } from '../components/ThemeToggle'
-import { ProfilePopup } from '../components/ProfilePopup'
-import { NotificationPopup } from '../components/NotificationPopup'
 import { useToast } from '../contexts/ToastContext'
 import { DashboardSkeleton } from '../components/Skeleton'
 import { DashboardSidebar } from '../components/DashboardSidebar'
@@ -24,6 +18,7 @@ import { WelcomeOverlay } from '../components/WelcomeOverlay'
 import { TaskTimer } from '../components/TaskTimer'
 import { WorkspaceSettingsModal } from '../components/WorkspaceSettingsModal'
 import { AiFocusPanel } from '../components/AiFocusPanel'
+import { AppHeader } from '../components/AppHeader'
 import type { Task, Project, Workspace } from '../types'
 
 const statusOrder: Task['status'][] = ['in_progress', 'blocked', 'planned', 'backlog', 'done']
@@ -124,6 +119,8 @@ export function Dashboard() {
   const [commandBarOpen, setCommandBarOpen] = useState(false)
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null)
   const [completionNote, setCompletionNote] = useState('')
+  const [blockingTaskId, setBlockingTaskId] = useState<string | null>(null)
+  const [blockedReason, setBlockedReason] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [projectFilter, setProjectFilter] = useState('')
   const [projects, setProjects] = useState<Project[]>([])
@@ -131,8 +128,7 @@ export function Dashboard() {
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectDesc, setNewProjectDesc] = useState('')
   const [creatingProject, setCreatingProject] = useState(false)
-  const [profileOpen, setProfileOpen] = useState(false)
-  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [headerOverlayOpen, setHeaderOverlayOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const searchBarRef = useRef<HTMLDivElement>(null)
@@ -166,10 +162,10 @@ export function Dashboard() {
 
   useEffect(() => {
     // Avoid stacking overlays: close calendar when other popups are open
-    if (completingTaskId || commandBarOpen || newProjectOpen || shortcutsOpen || profileOpen) {
+    if (completingTaskId || blockingTaskId || commandBarOpen || newProjectOpen || shortcutsOpen || headerOverlayOpen) {
       setCalendarOpen(false)
     }
-  }, [completingTaskId, commandBarOpen, newProjectOpen, shortcutsOpen, profileOpen])
+  }, [completingTaskId, blockingTaskId, commandBarOpen, newProjectOpen, shortcutsOpen, headerOverlayOpen])
 
   const toggleSidebar = () => {
     setSidebarCollapsed((c) => {
@@ -373,6 +369,46 @@ export function Dashboard() {
     }
   }
 
+  const openBlockModal = (taskId: string) => {
+    setBlockingTaskId(taskId)
+    setBlockedReason('')
+  }
+
+  const submitBlock = async () => {
+    if (!user || !blockingTaskId) return
+    setUpdatingTaskId(blockingTaskId)
+    try {
+      captureFlip(blockingTaskId)
+      await updateTask(
+        blockingTaskId,
+        { status: 'blocked', blockedReason: blockedReason.trim() || undefined },
+        user.uid
+      )
+      pushToast('Task marked blocked', 'success')
+      setBlockingTaskId(null)
+      setBlockedReason('')
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : 'Update failed', 'error')
+    } finally {
+      setUpdatingTaskId(null)
+    }
+  }
+
+  /** Clears the block and returns the task to the queue. */
+  const unblockTask = async (taskId: string) => {
+    if (!user) return
+    setUpdatingTaskId(taskId)
+    try {
+      captureFlip(taskId)
+      await updateTask(taskId, { status: 'planned', blockedReason: undefined }, user.uid)
+      pushToast('Unblocked', 'success')
+    } catch (err) {
+      pushToast(err instanceof Error ? err.message : 'Update failed', 'error')
+    } finally {
+      setUpdatingTaskId(null)
+    }
+  }
+
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user || !currentWorkspace || !newProjectName.trim()) return
@@ -451,61 +487,12 @@ export function Dashboard() {
         />
       )}
 
-      <header className="sticky top-0 z-10 glass border-b theme-border">
-        <div className="mx-auto flex h-14 w-full items-center justify-between gap-4 px-4 sm:px-6">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(true)}
-              className="flex shrink-0 items-center gap-2 rounded-xl py-2 px-2 -ml-2 transition-colors theme-surface-hover-bg"
-            >
-              <Logo className="w-8 h-8 text-(--color-accent)" />
-              <span className="text-xl font-bold tracking-tight theme-text">Stacky</span>
-            </button>
-          </div>
-
-          <nav className="flex flex-1 items-center justify-end gap-2 sm:gap-3">
-            <div className="h-6 w-px theme-bg-subtle" style={{ background: 'var(--color-border)' }} aria-hidden />
-
-            <div className="flex items-center gap-2">
-              <ThemeToggle />
-              <div className="hidden sm:block">
-                <ShortcutsButton
-                  onClick={() => setShortcutsOpen(true)}
-                  aria-expanded={shortcutsOpen}
-                />
-              </div>
-              <NotificationButton
-                onClick={() => setNotificationsOpen(!notificationsOpen)}
-                active={notificationsOpen}
-              />
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setProfileOpen(!profileOpen)}
-                  className="flex items-center gap-2 rounded-xl py-1 pl-2 pr-3 transition-colors theme-surface-hover-bg"
-                >
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full theme-bg-subtle text-xs theme-text-muted">
-                    {(profile?.photoURL ?? user?.photoURL ?? null) ? (
-                      <img src={profile?.photoURL ?? user?.photoURL ?? ''} alt="" className="h-full w-full rounded-full object-cover" />
-                    ) : (
-                      (profile?.displayName?.[0] || profile?.email?.[0] || '?').toUpperCase()
-                    )}
-                  </div>
-                  <span className="hidden max-w-[100px] truncate text-sm theme-text-muted sm:block">
-                    {profile?.displayName?.split(' ')[0] || 'User'}
-                  </span>
-                  <svg className="h-4 w-4 theme-text-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {profileOpen && <ProfilePopup onClose={() => setProfileOpen(false)} />}
-              </div>
-              {notificationsOpen && <NotificationPopup onClose={() => setNotificationsOpen(false)} />}
-            </div>
-          </nav>
-        </div>
-      </header>
+      <AppHeader
+        onMenuClick={() => setMobileMenuOpen(true)}
+        onShortcuts={() => setShortcutsOpen(true)}
+        shortcutsOpen={shortcutsOpen}
+        onOverlayChange={setHeaderOverlayOpen}
+      />
 
 
       <div className="flex min-h-[calc(100vh-3.5rem)] flex-1">
@@ -802,6 +789,18 @@ export function Dashboard() {
                           </button>
                           <button
                             type="button"
+                            onClick={() => openBlockModal(t.id)}
+                            className="rounded-xl p-1.5 text-xs font-medium theme-text-muted hover:text-amber-400 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                            title="Mark blocked"
+                            aria-label="Mark blocked"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <circle cx="12" cy="12" r="9" />
+                              <path strokeLinecap="round" d="M5.6 5.6l12.8 12.8" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => openDoneModal(t.id)}
                             disabled={updatingTaskId === t.id}
                             className="rounded-xl theme-surface-bg theme-border border px-2.5 py-1.5 sm:px-3 sm:py-1.5 text-xs font-medium theme-text theme-surface-hover-bg disabled:opacity-50"
@@ -856,6 +855,19 @@ export function Dashboard() {
                               {t.title}
                             </button>
                             <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs theme-text-muted">
+                              {/* Identified by icon + label, never colour alone. */}
+                              {t.status === 'blocked' && (
+                                <span
+                                  className="flex items-center gap-1 rounded-lg bg-amber-500/10 px-1.5 py-0.5 text-amber-400"
+                                  title={t.blockedReason || 'Blocked'}
+                                >
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <circle cx="12" cy="12" r="9" />
+                                    <path strokeLinecap="round" d="M5.6 5.6l12.8 12.8" />
+                                  </svg>
+                                  {t.blockedReason ? `Blocked — ${t.blockedReason}` : 'Blocked'}
+                                </span>
+                              )}
                               {t.projectId && projectMap.get(t.projectId) && (
                                 <span className="rounded-lg theme-surface-bg px-1.5 py-0.5 theme-text-muted">
                                   {projectMap.get(t.projectId)!.name}
@@ -905,24 +917,39 @@ export function Dashboard() {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                               </svg>
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                // Record where the card sits in the queue before
-                                // the status change unmounts it from this list.
-                                captureFlip(t.id)
-                                void updateTask(
-                                  t.id,
-                                  { status: 'in_progress', startedAt: Timestamp.now() },
-                                  user?.uid || ''
-                                )
-                              }}
-                              disabled={updatingTaskId === t.id || inProgress.length >= maxInProgress}
-                              className="rounded-xl theme-surface-bg theme-border border px-2.5 py-1.5 sm:px-3 sm:py-1.5 text-xs font-medium theme-text theme-surface-hover-bg disabled:opacity-50"
-                              title={inProgress.length >= maxInProgress ? 'At limit — mark a task done first' : 'Start working'}
-                            >
-                              {updatingTaskId === t.id ? '…' : 'Start'}
-                            </button>
+                            {/* A blocked task offers Unblock, not Start — starting
+                                one silently was the whole problem with having the
+                                status but no way to see or act on it. */}
+                            {t.status === 'blocked' ? (
+                              <button
+                                type="button"
+                                onClick={() => void unblockTask(t.id)}
+                                disabled={updatingTaskId === t.id}
+                                className="rounded-xl border border-amber-500/40 px-2.5 py-1.5 sm:px-3 text-xs font-medium text-amber-400 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
+                                title={t.blockedReason ? `Blocked: ${t.blockedReason}` : 'Blocked'}
+                              >
+                                {updatingTaskId === t.id ? '…' : 'Unblock'}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  // Record where the card sits in the queue before
+                                  // the status change unmounts it from this list.
+                                  captureFlip(t.id)
+                                  void updateTask(
+                                    t.id,
+                                    { status: 'in_progress', startedAt: Timestamp.now() },
+                                    user?.uid || ''
+                                  )
+                                }}
+                                disabled={updatingTaskId === t.id || inProgress.length >= maxInProgress}
+                                className="rounded-xl theme-surface-bg theme-border border px-2.5 py-1.5 sm:px-3 sm:py-1.5 text-xs font-medium theme-text theme-surface-hover-bg disabled:opacity-50"
+                                title={inProgress.length >= maxInProgress ? 'At limit — mark a task done first' : 'Start working'}
+                              >
+                                {updatingTaskId === t.id ? '…' : 'Start'}
+                              </button>
+                            )}
                           </div>
                         </li>
                       ))}
@@ -1012,6 +1039,50 @@ export function Dashboard() {
         </main>
       </div>
       {shortcutsOpen && <ShortcutsModal onClose={() => setShortcutsOpen(false)} />}
+      {blockingTaskId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center theme-overlay backdrop-blur-sm p-4"
+          onClick={() => setBlockingTaskId(null)}
+          role="dialog"
+          aria-label="Mark task blocked"
+        >
+          <div
+            className="glass-strong w-full max-w-md rounded-2xl p-6 shadow-xl animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-lg font-semibold theme-text">Mark task blocked</h3>
+            <p className="mt-1 text-sm theme-text-muted">
+              What is it waiting on? This shows on the card so you can see why without opening it.
+            </p>
+            <textarea
+              value={blockedReason}
+              onChange={(e) => setBlockedReason(e.target.value)}
+              placeholder="e.g. waiting on the auth fix to ship"
+              rows={3}
+              className="mt-4 w-full rounded-2xl theme-input px-4 py-3"
+              autoFocus
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBlockingTaskId(null)}
+                className="rounded-2xl border theme-border px-4 py-2 text-sm theme-text-muted theme-surface-hover-bg hover:theme-text"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitBlock}
+                disabled={updatingTaskId === blockingTaskId}
+                className="rounded-2xl border border-amber-500/40 px-4 py-2 text-sm font-medium text-amber-400 transition-colors hover:bg-amber-500/10 disabled:opacity-50"
+              >
+                Mark blocked
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {completingTaskId && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center theme-overlay backdrop-blur-sm p-4"

@@ -1,3 +1,4 @@
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import type { Workspace, Project } from '../types'
 
@@ -27,6 +28,28 @@ const chevronRight = (
   </svg>
 )
 
+
+const NAV_ITEMS = [
+  {
+    path: '/',
+    label: 'Overview',
+    icon: (
+      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 13h6V3H3v10zm0 8h6v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
+      </svg>
+    ),
+  },
+  {
+    path: '/tasks',
+    label: 'Tasks',
+    icon: (
+      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-6 4h6" />
+      </svg>
+    ),
+  },
+]
+
 export function DashboardSidebar({
   workspaces,
   currentWorkspace,
@@ -50,6 +73,8 @@ export function DashboardSidebar({
   onEditWorkspace: (id: string, name: string) => void
   onDeleteWorkspace: (id: string, name: string) => void
 }) {
+  const navigate = useNavigate()
+  const location = useLocation()
   const [workspacesOpen, setWorkspacesOpen] = useState(true)
   const [projectsOpen, setProjectsOpen] = useState(true)
   const [hovered, setHovered] = useState(false)
@@ -76,7 +101,10 @@ export function DashboardSidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex h-full flex-col border-r theme-border theme-bg-subtle transition-all duration-300 ease-in-out lg:static lg:z-0 lg:h-auto lg:transition-[width] lg:duration-200 lg:translate-x-0 ${mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
+        // On desktop the sidebar sticks below the 3.5rem header and owns its own
+        // scroll, so long pages scroll their content without dragging the
+        // navigation off the top of the screen with them.
+        className={`fixed inset-y-0 left-0 z-50 flex h-full flex-col border-r theme-border theme-bg-subtle transition-all duration-300 ease-in-out lg:sticky lg:top-14 lg:z-0 lg:self-start lg:h-[calc(100vh-3.5rem)] lg:transition-[width] lg:duration-200 lg:translate-x-0 ${mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
           } ${expanded ? 'lg:w-64' : 'lg:w-14'
           } w-64`}
         aria-label="Workspaces and projects"
@@ -95,6 +123,32 @@ export function DashboardSidebar({
               </svg>
             </button>
           </div>
+
+          {/* Top-level views. Without these the two pages are only reachable
+              by typing the URL — which is how /analytics stayed invisible. */}
+          <nav className="mb-4 space-y-1">
+            {NAV_ITEMS.map((item) => {
+              const active = location.pathname === item.path
+              return (
+                <button
+                  key={item.path}
+                  type="button"
+                  onClick={() => {
+                    navigate(item.path)
+                    setMobileOpen(false)
+                  }}
+                  title={item.label}
+                  aria-current={active ? 'page' : undefined}
+                  className={`flex w-full items-center gap-3 rounded-xl px-2 py-2 text-sm font-medium transition-colors ${
+                    active ? 'theme-surface-bg theme-text' : 'theme-text-muted theme-surface-hover-bg hover:theme-text'
+                  }`}
+                >
+                  <span className="shrink-0">{item.icon}</span>
+                  {expanded && <span className="truncate">{item.label}</span>}
+                </button>
+              )
+            })}
+          </nav>
 
           {expanded && (
             <section>
@@ -282,7 +336,7 @@ export function DashboardSidebar({
             </section>
           )}
         </div>
-        <div className="border-t theme-border p-2 hidden lg:block">
+        <div className="shrink-0 border-t theme-border p-2 hidden lg:block">
           <button
             type="button"
             onClick={onToggleCollapse}

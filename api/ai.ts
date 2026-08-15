@@ -1,6 +1,8 @@
 import { getApps, initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 
+import { checkBudget, recordSpend } from './_lib/aiBudget.js'
+
 /**
  * POST /api/ai — analyses a workspace's tasks and returns a focus summary plus
  * priority suggestions.
@@ -113,6 +115,130 @@ const RESPONSE_SCHEMA = {
   },
 }
 
+
+/**
+ * The overview read interprets aggregates, not a task list: the client has
+ * already computed the trends, so this call reasons about a handful of numbers
+ * rather than re-reading every task. It answers the question the charts raise
+ * but never settle — is this good, and what changed?
+ */
+const OVERVIEW_PROMPT = `You read a workspace's delivery metrics and say what they mean.
+
+You are given counts, a seven-day series of tasks completed and created, median cycle time, and tag/project rollups. Interpret them; do not restate them.
+
+You may also be given "previous" — what you said at the last reading, with its timestamp. When it is present, report the *change*, because the reader has already seen that text:
+- Say what moved since then and by how much. "The backlog grew by 3 more since 09:14" beats restating that the backlog is growing.
+- If the numbers have genuinely not moved, say so in one short sentence and stop. Padding an unchanged reading with fresh adjectives wastes the reader's attention and hides real movement when it comes.
+- Never contradict the previous reading without explaining what changed.
+
+Judge:
+1. Intake vs throughput. Created outpacing completed over the week means the backlog is growing — say so plainly.
+2. Concentration. Work bunched in one project or tag is a risk if it stalls.
+3. Overdue and blocked items outrank general progress.
+4. Cycle time is a median. Do not describe it as an average.
+
+Rules:
+- Never invent a number. Use only what you are given, and only quote a figure when it carries the point.
+- If a metric looks unremarkable, say things are steady. Manufactured concern is worse than silence.
+- Each signal names something specific and actionable, not a restatement of a count.
+- "good" means genuinely healthy, "watch" means worth an eye, "risk" means act now. Most weeks are watch or good.
+
+Output shape, which matters as much as the content:
+- headline: under 90 characters, one clause. It is a title, not a summary — never repeat the summary's wording, and never let it run long enough to be cut off.
+- summary: two or three complete sentences.
+- signals[].label: two to four words naming the thing observed — "Backlog growing", "Security work concentrated", "One item overdue". Never the tone word; "watch" and "risk" are not labels.
+- signals[].detail: one complete sentence with the evidence.
+
+Good signal → label: "Backlog growing", tone: "watch", detail: "18 tasks were created against 13 completed this week, so the queue grew by 5."
+Bad signal → label: "watch", detail: "incoming above completion" — the label repeats the tone and the detail is a fragment.
+
+Write for someone glancing at their dashboard. No headings, no bullets, no preamble.`
+
+const OVERVIEW_SCHEMA = {
+  name: 'stacky_overview',
+  strict: true,
+  schema: {
+    type: 'object',
+    properties: {
+      headline: { type: 'string', description: 'A title under 90 characters. One clause, not a summary, and never a truncated sentence.' },
+      change: {
+        type: 'string',
+        enum: ['first', 'improved', 'worse', 'unchanged'],
+        description: 'Compared with the previous reading: "improved", "worse", or "unchanged" when nothing material moved. Use "first" ONLY when no previous reading was supplied.',
+      },
+      summary: { type: 'string', description: 'Two or three sentences interpreting the trend.' },
+      signals: {
+        type: 'array',
+        description: 'Up to 3 specific observations. Empty is valid when nothing stands out.',
+        items: {
+          type: 'object',
+          properties: {
+            label: { type: 'string', description: 'Two to four words naming the observation, e.g. "Backlog growing". Never the tone word.' },
+            tone: { type: 'string', enum: ['good', 'watch', 'risk'] },
+            detail: { type: 'string', description: 'One sentence citing the evidence.' },
+          },
+          required: ['label', 'tone', 'detail'],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['headline', 'summary', 'signals'],
+    additionalProperties: false,
+  },
+}
+
+
+/**
+ * Whether a reading is the first one is a fact the server knows — it either
+ * sent a previous reading or it didn't. The model reported "first" on a
+ * follow-up read, which would defeat the de-duplication downstream, so the
+ * claim is corrected here rather than trusted.
+ */
+function normaliseChange(claimed: unknown, hadPrevious: boolean): string {
+  const valid = ['first', 'improved', 'worse', 'unchanged']
+  const value = valid.includes(claimed as string) ? (claimed as string) : 'unchanged'
+  if (!hadPrevious) return 'first'
+  return value === 'first' ? 'unchanged' : value
+}
+
+/** One place that talks to OpenRouter, so both modes share the token cap. */
+async function askModel(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  schema: unknown
+): Promise<any> {
+  const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://stackyy.vercel.app',
+      'X-Title': 'Stacky',
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: MAX_OUTPUT_TOKENS,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      response_format: { type: 'json_schema', json_schema: schema },
+    }),
+  })
+  if (!upstream.ok) {
+    const detail = await upstream.text()
+    console.error('OpenRouter error', upstream.status, detail.slice(0, 500))
+    throw new Error(`The model provider returned ${upstream.status}.`)
+  }
+  const payload = (await upstream.json()) as any
+  const content = payload?.choices?.[0]?.message?.content
+  if (!content) throw new Error('The model returned an empty response.')
+  // OpenRouter reports the real cost of the call; the ledger uses it rather
+  // than estimating from token counts and a price table.
+  return { result: JSON.parse(content), costUsd: Number(payload?.usage?.cost ?? 0) }
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Use POST.' })
@@ -129,14 +255,58 @@ export default async function handler(req: any, res: any) {
   if (!idToken) {
     return res.status(401).json({ error: 'Missing Firebase ID token.' })
   }
+  let callerUid: string
   try {
-    await getAuth().verifyIdToken(idToken)
+    callerUid = (await getAuth().verifyIdToken(idToken)).uid
   } catch {
     return res.status(401).json({ error: 'Invalid or expired session. Sign in again.' })
   }
 
-  // 2. Bound the payload so one request can't run up an unbounded bill.
+  // The key cannot cap itself upstream, so the ceiling is enforced here.
+  const budget = await checkBudget(callerUid)
+  if (!budget.allowed) {
+    return res.status(429).json({ error: budget.reason })
+  }
+
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
+
+  // The overview read takes pre-computed aggregates, not a task list — the
+  // client already derives these for the charts, so there is nothing to
+  // recompute and the payload stays a few hundred tokens.
+  if (body.mode === 'overview') {
+    const metrics = body.metrics
+    if (!metrics || typeof metrics !== 'object') {
+      return res.status(400).json({ error: 'No metrics supplied.' })
+    }
+    try {
+      const { result: analysis, costUsd } = await askModel(
+        apiKey,
+        OVERVIEW_PROMPT,
+        `Today is ${new Date().toISOString().slice(0, 10)}.\n\n` +
+          `${JSON.stringify(metrics, null, 1)}\n\n` +
+          (body.previous ? `previous: ${JSON.stringify(body.previous, null, 1)}` : 'previous: none'),
+        OVERVIEW_SCHEMA
+      )
+      await recordSpend(callerUid, costUsd)
+      return res.status(200).json({
+        headline: String(analysis.headline ?? '').slice(0, 200),
+        change: normaliseChange(analysis.change, Boolean(body.previous)),
+        summary: String(analysis.summary ?? '').slice(0, 1200),
+        signals: (analysis.signals ?? []).slice(0, 3).map((sig: any) => ({
+          label: String(sig.label ?? '').slice(0, 60),
+          tone: ['good', 'watch', 'risk'].includes(sig.tone) ? sig.tone : 'watch',
+          detail: String(sig.detail ?? '').slice(0, 300),
+        })),
+        model: MODEL,
+        generatedAt: new Date().toISOString(),
+      })
+    } catch (err) {
+      console.error('Overview read failed', err)
+      return res.status(502).json({ error: (err as Error).message })
+    }
+  }
+
+  // 2. Bound the payload so one request can't run up an unbounded bill.
   const rawTasks: IncomingTask[] = Array.isArray(body.tasks) ? body.tasks : []
   if (rawTasks.length === 0) {
     return res.status(400).json({ error: 'No tasks supplied.' })
@@ -159,45 +329,13 @@ export default async function handler(req: any, res: any) {
   const userPrompt = `Today is ${today}.\n\nOpen tasks in this workspace:\n${JSON.stringify(tasks, null, 1)}`
 
   try {
-    const upstream = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        // OpenRouter attributes usage in its dashboard by these.
-        'HTTP-Referer': 'https://stackyy.vercel.app',
-        'X-Title': 'Stacky',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: MAX_OUTPUT_TOKENS,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userPrompt },
-        ],
-        response_format: { type: 'json_schema', json_schema: RESPONSE_SCHEMA },
-      }),
-    })
-
-    if (!upstream.ok) {
-      const detail = await upstream.text()
-      console.error('OpenRouter error', upstream.status, detail.slice(0, 500))
-      return res.status(502).json({ error: `The model provider returned ${upstream.status}.` })
-    }
-
-    const payload = (await upstream.json()) as any
-    const content = payload?.choices?.[0]?.message?.content
-    if (!content) {
-      return res.status(502).json({ error: 'The model returned an empty response.' })
-    }
-
-    let analysis: any
-    try {
-      analysis = JSON.parse(content)
-    } catch {
-      console.error('Unparseable model content', String(content).slice(0, 500))
-      return res.status(502).json({ error: 'The model returned malformed JSON.' })
-    }
+    const { result: analysis, costUsd } = await askModel(
+      apiKey,
+      SYSTEM_PROMPT,
+      userPrompt,
+      RESPONSE_SCHEMA
+    )
+    await recordSpend(callerUid, costUsd)
 
     // Drop any suggestion naming a task that wasn't in the input, or that
     // doesn't actually change anything — a hallucinated id would otherwise

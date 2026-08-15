@@ -94,13 +94,21 @@ service cloud.firestore {
     }
 
     match /tasks/{taskId}/activity/{activityId} {
-      allow read: if isSignedIn() && isWorkspaceMember(get(/databases/$(database)/documents/tasks/$(taskId)).data.workspaceId);
-      allow create: if isSignedIn();
+      // Create must match read: without the membership check any signed-in user
+      // could write fabricated history onto a task in a workspace they cannot
+      // even read. The app only ever logs activity on tasks it can reach, so
+      // this costs nothing; the MCP server uses the Admin SDK and is unaffected.
+      allow read, create: if isSignedIn()
+        && isWorkspaceMember(get(/databases/$(database)/documents/tasks/$(taskId)).data.workspaceId);
       allow update, delete: if false;
     }
 
+    // Unreferenced by the app and by the MCP server — nothing reads or writes
+    // it. It was open to every signed-in user, so it is closed rather than left
+    // as an unguarded collection nobody is watching. Give it a real rule if a
+    // feature ever needs it.
     match /task_dependencies/{depId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if false;
     }
 
     // MCP access tokens. Server-only, with no exceptions: these documents are
@@ -109,6 +117,19 @@ service cloud.firestore {
     // which users have tokens; one that could write it could mint its own.
     match /mcpTokens/{tokenId} {
       allow read, write: if false;
+    }
+
+    // The AI spend ledger. Server-only: a client that could write it could
+    // reset the cap it exists to enforce.
+    match /aiBudget/{day} {
+      allow read, write: if false;
+    }
+
+    // Cached Overview read, one document per user (doc id == uid). It is keyed
+    // by user rather than workspace because the default scope spans every
+    // workspace they can reach, so no single workspace owns it.
+    match /aiOverview/{userId} {
+      allow read, write: if isOwner(userId);
     }
 
     // Cached AI analysis, one document per workspace (doc id == workspaceId).
