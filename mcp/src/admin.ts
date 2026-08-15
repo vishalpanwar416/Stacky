@@ -37,13 +37,17 @@ export async function createWorkspace(userId: string, input: {
     updatedAt: FieldValue.serverTimestamp(),
   })
 
-  // The UI lists members from this subcollection, not from memberIds.
+  // The UI lists members from this subcollection, not from memberIds, and it
+  // renders the name stored here rather than joining against `users` — so
+  // writing nulls showed the owner as "Unknown User". The profile is the
+  // source of truth for identity; copy it in the way the web client does.
+  const profile = (await db.collection('users').doc(userId).get()).data()
   await ref.collection(MEMBERS).doc(userId).set({
     userId,
     role: 'owner',
     joinedAt: FieldValue.serverTimestamp(),
-    displayName: null,
-    email: null,
+    displayName: profile?.displayName ?? null,
+    email: profile?.email ?? null,
   })
 
   return ref.id

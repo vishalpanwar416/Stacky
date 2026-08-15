@@ -21,7 +21,7 @@ export function WorkspaceSettingsModal({
     initialTab = 'general',
 }: WorkspaceSettingsModalProps) {
     const { toast } = useToast()
-    const { user } = useAuth()
+    const { user, profile } = useAuth()
 
     const [activeTab, setActiveTab] = useState<'general' | 'members'>(initialTab)
 
@@ -78,6 +78,20 @@ export function WorkspaceSettingsModal({
             setMembersLoading(false)
         }
     }
+
+    /**
+     * Member rows render a denormalised copy of the member's name and email.
+     * Older rows — and any written by a client that had no profile to hand —
+     * stored nulls, which surfaced as "Unknown User". For the signed-in user we
+     * always have the real profile, so prefer it over whatever was copied.
+     */
+    const displayFor = (member: WorkspaceMember) =>
+        member.userId === user?.uid
+            ? {
+                name: member.displayName ?? profile?.displayName ?? user?.displayName ?? null,
+                email: member.email ?? profile?.email ?? user?.email ?? null,
+            }
+            : { name: member.displayName ?? null, email: member.email ?? null }
 
     const handleSearch = async (val: string) => {
         setInviteEmail(val)
@@ -306,15 +320,15 @@ export function WorkspaceSettingsModal({
                                             <div key={member.userId} className="flex items-center justify-between rounded-lg p-2 hover:bg-white/5">
                                                 <div className="flex items-center gap-3">
                                                     <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium ${member.userId === user?.uid ? 'bg-primary text-white' : 'bg-primary/20 theme-text'}`}>
-                                                        {(member.displayName?.[0] || member.email?.[0] || '?').toUpperCase()}
+                                                        {(displayFor(member).name?.[0] || displayFor(member).email?.[0] || '?').toUpperCase()}
                                                     </div>
                                                     <div>
                                                         <div className="text-sm font-medium theme-text">
-                                                            {member.displayName || 'Unknown User'}
+                                                            {displayFor(member).name || 'Unknown member'}
                                                             {member.userId === user?.uid && <span className="ml-2 text-[10px] theme-text-muted opacity-60">(You)</span>}
                                                         </div>
                                                         <div className="text-xs theme-text-muted">
-                                                            {member.email || 'No email'}
+                                                            {displayFor(member).email || 'No email'}
                                                         </div>
                                                     </div>
                                                 </div>
