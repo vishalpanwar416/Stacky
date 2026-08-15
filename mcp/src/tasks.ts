@@ -1,4 +1,3 @@
-import { STACKY_USER_ID } from './config.js'
 import { ACTIVITY, COMMENTS, FieldValue, TASKS, Timestamp, db } from './firestore.js'
 import { assertProjectInWorkspace, assertTask, assertWorkspace } from './scope.js'
 
@@ -23,9 +22,14 @@ type Activity =
   | 'blocked'
   | 'due_set'
 
-async function logActivity(taskId: string, action: Activity, payload?: Record<string, unknown>) {
+async function logActivity(
+  userId: string,
+  taskId: string,
+  action: Activity,
+  payload?: Record<string, unknown>
+) {
   await db.collection(TASKS).doc(taskId).collection(ACTIVITY).add({
-    userId: STACKY_USER_ID,
+    userId,
     action,
     payload: payload ?? null,
     createdAt: FieldValue.serverTimestamp(),
@@ -70,8 +74,8 @@ export interface CreateInput {
   timerEnabled?: boolean
 }
 
-export async function createTask(input: CreateInput) {
-  await assertWorkspace(input.workspaceId)
+export async function createTask(userId: string, input: CreateInput) {
+  await assertWorkspace(userId, input.workspaceId)
   if (input.projectId) await assertProjectInWorkspace(input.projectId, input.workspaceId)
 
   const payload: Record<string, unknown> = {
@@ -82,8 +86,8 @@ export async function createTask(input: CreateInput) {
     tags: input.tags ?? [],
     isRecurring: false,
     timerEnabled: input.timerEnabled ?? true,
-    assignees: { ownerId: STACKY_USER_ID, watcherIds: [] },
-    createdBy: STACKY_USER_ID,
+    assignees: { ownerId: userId, watcherIds: [] },
+    createdBy: userId,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   }
@@ -94,8 +98,8 @@ export async function createTask(input: CreateInput) {
   if (input.dueDate) payload.dueDate = toTimestamp(input.dueDate, 'dueDate', input.dueTime)
 
   const ref = await db.collection(TASKS).add(payload)
-  await logActivity(ref.id, 'created', { title: input.title })
-  if (input.dueDate) await logActivity(ref.id, 'due_set', { dueDate: input.dueDate })
+  await logActivity(userId, ref.id, 'created', { title: input.title })
+  if (input.dueDate) await logActivity(userId, ref.id, 'due_set', { dueDate: input.dueDate })
   return ref.id
 }
 
@@ -113,8 +117,8 @@ export interface UpdateInput {
   blockedReason?: string
 }
 
-export async function updateTask(taskId: string, input: UpdateInput) {
-  const { ref, data: prev } = await assertTask(taskId)
+export async function updateTask(userId: string, taskId: string, input: UpdateInput) {
+  const { ref, data: prev } = await assertTask(userId, taskId)
 
   if (input.projectId) await assertProjectInWorkspace(input.projectId, prev.workspaceId)
 
@@ -151,28 +155,28 @@ export async function updateTask(taskId: string, input: UpdateInput) {
   await ref.update(updates)
 
   if (changingStatus) {
-    await logActivity(taskId, 'status_change', { from: prev.status, to: input.status })
-    if (input.status === 'done') await logActivity(taskId, 'completed', {})
-    if (prev.status === 'done') await logActivity(taskId, 'reopened', {})
+    await logActivity(userId, taskId, 'status_change', { from: prev.status, to: input.status })
+    if (input.status === 'done') await logActivity(userId, taskId, 'completed', {})
+    if (prev.status === 'done') await logActivity(userId, taskId, 'reopened', {})
     if (input.status === 'blocked' && input.blockedReason) {
-      await logActivity(taskId, 'blocked', { reason: input.blockedReason })
+      await logActivity(userId, taskId, 'blocked', { reason: input.blockedReason })
     }
   }
-  if (input.dueDate) await logActivity(taskId, 'due_set', { dueDate: input.dueDate })
+  if (input.dueDate) await logActivity(userId, taskId, 'due_set', { dueDate: input.dueDate })
 
   return { previousStatus: prev.status as string, title: prev.title as string }
 }
 
-export async function addComment(taskId: string, body: string) {
-  await assertTask(taskId)
+export async function addComment(userId: string, taskId: string, body: string) {
+  await assertTask(userId, taskId)
   const ref = await db.collection(TASKS).doc(taskId).collection(COMMENTS).add({
-    userId: STACKY_USER_ID,
+    userId,
     displayName: null,
     body,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
     mentions: [],
   })
-  await logActivity(taskId, 'comment', { commentId: ref.id })
+  await logActivity(userId, taskId, 'comment', { commentId: ref.id })
   return ref.id
 }

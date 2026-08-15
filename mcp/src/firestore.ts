@@ -5,6 +5,12 @@ import { FieldValue, Timestamp, getFirestore } from 'firebase-admin/firestore'
 import { SERVICE_ACCOUNT_PATH } from './config.js'
 
 function loadCredential() {
+  // Hosted (Vercel) has no filesystem to keep a key file on, so the credential
+  // arrives as an environment variable there. Locally it stays a gitignored
+  // file. Either way it never reaches the browser bundle.
+  const inline = process.env.FIREBASE_SERVICE_ACCOUNT
+  if (inline) return cert(JSON.parse(inline))
+
   try {
     return cert(JSON.parse(readFileSync(SERVICE_ACCOUNT_PATH, 'utf8')))
   } catch (err) {

@@ -1,5 +1,9 @@
 # Local-only tooling — never upload to Vercel.
-# The MCP server holds a Firestore service account key and must stay off the CDN.
-mcp
 server
+
+# mcp/src IS uploaded: api/mcp.ts imports the server core from it. Only the
+# local build output, dependencies and the credential are excluded — the
+# hosted function gets its credential from an environment variable instead.
+mcp/dist
+mcp/node_modules
 **/serviceAccountKey.json

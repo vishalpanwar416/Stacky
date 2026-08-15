@@ -30,9 +30,50 @@ These are ordinary Stacky tags, so the existing UI filters work on them
 unchanged. If you later want a real `type` field, it means a schema change
 across `src/types`, `NewTask.tsx`, `TaskDetail.tsx` and the Dashboard filters.
 
-## Setup
+## Two ways to run it
 
-Already done on this machine; this is for a rebuild or a second machine.
+| | Hosted (`/api/mcp`) | Local (stdio) |
+| --- | --- | --- |
+| Who can use it | Any Stacky user, as themselves | Only whoever holds the key file |
+| Identity | From the access token, per request | `STACKY_USER_ID` in config |
+| Credential | Held server-side on Vercel | A key file on your disk |
+| Setup | Create a token in the app | Clone, build, generate a key |
+
+**Hosted is the normal path.** Sign in to Stacky → avatar menu → **Connect to Claude** →
+create a token → paste the command it gives you:
+
+```bash
+claude mcp add --transport http stacky https://stackyy.vercel.app/api/mcp \
+  --header "Authorization: Bearer stk_…"
+```
+
+The token is shown once and stored only as a SHA-256 hash, so it cannot be recovered
+later — create a new one if you lose it. Revoke from the same screen; revocation takes
+effect on the next request.
+
+### How the hosted server keeps users apart
+
+The Admin SDK ignores `firestore.rules`, so over HTTP `src/scope.ts` is the *only*
+boundary between one user's token and another's data. Two things make that safe to
+rely on:
+
+- **Identity is per request, never module state.** `createStackyServer(userId)` closes
+  over the uid resolved from the token; one process serving many people cannot leak a
+  "current user" across concurrent requests.
+- **Every tool re-checks access against the database**, rather than trusting the
+  workspace id it was handed.
+
+`scripts/isolation.mjs` drives the live endpoint as two different users and asserts the
+boundary — disjoint workspaces, reads and writes into another user's workspace refused,
+nothing written, revoked tokens dead. Run it against any deployment:
+
+```bash
+node scripts/isolation.mjs https://stackyy.vercel.app
+```
+
+## Local setup
+
+For the stdio server. Already done on this machine; this is for a rebuild or a second machine.
 
 **1. Service account.** The server authenticates with a dedicated,
 Firestore-only service account (`roles/datastore.user`) — deliberately *not* the

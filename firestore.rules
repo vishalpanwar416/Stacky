@@ -103,6 +103,14 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
 
+    // MCP access tokens. Server-only, with no exceptions: these documents are
+    // credentials, and the API (Admin SDK) is the only thing that should read
+    // or write them. A client that could list this collection could enumerate
+    // which users have tokens; one that could write it could mint its own.
+    match /mcpTokens/{tokenId} {
+      allow read, write: if false;
+    }
+
     // Cached AI analysis, one document per workspace (doc id == workspaceId).
     // Holds no data the member can't already read — it is derived from their
     // own tasks — so workspace membership is the whole check.

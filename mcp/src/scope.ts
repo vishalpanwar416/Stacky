@@ -1,12 +1,17 @@
-import { QUERY_CHUNK, STACKY_USER_ID } from './config.js'
+import { QUERY_CHUNK } from './config.js'
 import { PROJECTS, TASKS, WORKSPACES, db } from './firestore.js'
 
 /**
  * Every tool routes its reads and writes through this module.
  *
- * The Admin SDK ignores firestore.rules, and Stacky's database is shared with
- * other people. So access is re-checked here on every call rather than trusted
- * from the arguments the model passes in.
+ * The Admin SDK ignores firestore.rules, and Stacky's database is shared, so
+ * access is re-checked here on every call rather than trusted from the
+ * arguments the caller passes in.
+ *
+ * `userId` is threaded explicitly through every function rather than read from
+ * a module constant. Over HTTP one process serves many people, so identity
+ * belongs to the request — a module-level "current user" would be a
+ * cross-tenant data leak waiting for its first concurrent request.
  */
 
 export class AccessError extends Error {}
@@ -28,39 +33,39 @@ function toWorkspace(doc: FirebaseFirestore.DocumentSnapshot): WorkspaceRef {
   }
 }
 
-const canReach = (w: WorkspaceRef) =>
-  w.ownerId === STACKY_USER_ID || w.memberIds.includes(STACKY_USER_ID)
+const canReach = (w: WorkspaceRef, userId: string) =>
+  w.ownerId === userId || w.memberIds.includes(userId)
 
-/** Workspaces the configured user owns or is a member of. */
-export async function listWorkspaces(): Promise<WorkspaceRef[]> {
+/** Workspaces this user owns or is a member of. */
+export async function listWorkspaces(userId: string): Promise<WorkspaceRef[]> {
   const [owned, joined] = await Promise.all([
-    db.collection(WORKSPACES).where('ownerId', '==', STACKY_USER_ID).get(),
-    db.collection(WORKSPACES).where('memberIds', 'array-contains', STACKY_USER_ID).get(),
+    db.collection(WORKSPACES).where('ownerId', '==', userId).get(),
+    db.collection(WORKSPACES).where('memberIds', 'array-contains', userId).get(),
   ])
   const byId = new Map<string, WorkspaceRef>()
   for (const doc of [...owned.docs, ...joined.docs]) byId.set(doc.id, toWorkspace(doc))
   return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 
-/** Throws unless the configured user can reach `workspaceId`. */
-export async function assertWorkspace(workspaceId: string): Promise<WorkspaceRef> {
+/** Throws unless this user can reach `workspaceId`. */
+export async function assertWorkspace(userId: string, workspaceId: string): Promise<WorkspaceRef> {
   const doc = await db.collection(WORKSPACES).doc(workspaceId).get()
   if (!doc.exists) throw new AccessError(`Workspace ${workspaceId} does not exist.`)
   const ws = toWorkspace(doc)
-  if (!canReach(ws)) {
-    throw new AccessError(
-      `Workspace ${workspaceId} belongs to another user. This server is scoped to ${STACKY_USER_ID}.`
-    )
+  if (!canReach(ws, userId)) {
+    // Deliberately does not echo the caller's uid back — the message is a
+    // refusal, not a lookup service for other people's identifiers.
+    throw new AccessError(`Workspace ${workspaceId} is not one you have access to.`)
   }
   return ws
 }
 
-/** Throws unless the task exists and sits in a reachable workspace. */
-export async function assertTask(taskId: string) {
+/** Throws unless the task exists and sits in a workspace this user can reach. */
+export async function assertTask(userId: string, taskId: string) {
   const doc = await db.collection(TASKS).doc(taskId).get()
   if (!doc.exists) throw new AccessError(`Task ${taskId} does not exist.`)
   const data = doc.data() ?? {}
-  await assertWorkspace(data.workspaceId)
+  await assertWorkspace(userId, data.workspaceId)
   return { ref: doc.ref, data }
 }
 
@@ -70,9 +75,7 @@ export async function assertProjectInWorkspace(projectId: string, workspaceId: s
   if (!doc.exists) throw new AccessError(`Project ${projectId} does not exist.`)
   const actual = doc.data()?.workspaceId
   if (actual !== workspaceId) {
-    throw new AccessError(
-      `Project ${projectId} belongs to workspace ${actual}, not ${workspaceId}.`
-    )
+    throw new AccessError(`Project ${projectId} does not belong to workspace ${workspaceId}.`)
   }
   return doc
 }

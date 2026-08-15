@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { McpAccessModal } from './McpAccessModal'
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -7,6 +9,7 @@ interface ProfilePopupProps {
 }
 
 export function ProfilePopup({ onClose }: ProfilePopupProps) {
+    const [mcpOpen, setMcpOpen] = useState(false)
     const { user, profile, signOut } = useAuth()
     const photoURL = profile?.photoURL ?? user?.photoURL
     useEffect(() => {
@@ -20,6 +23,8 @@ export function ProfilePopup({ onClose }: ProfilePopupProps) {
     }, [onClose])
 
     const initial = profile?.displayName?.[0] || profile?.email?.[0] || '?'
+
+    if (mcpOpen) return <McpAccessModal onClose={() => setMcpOpen(false)} />
 
     return createPortal(
         <>
@@ -54,6 +59,16 @@ export function ProfilePopup({ onClose }: ProfilePopupProps) {
 
                 <div className="flex-1 overflow-y-auto min-h-0">
                     <div className="p-2 space-y-1">
+                        <button
+                            type="button"
+                            onClick={() => setMcpOpen(true)}
+                            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm theme-text-muted transition-colors theme-surface-hover-bg hover:theme-text text-left"
+                        >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 01-5.656-5.656l1.5-1.5M10.172 13.828a4 4 0 010-5.656l3-3a4 4 0 115.656 5.656l-1.5 1.5" />
+                            </svg>
+                            Connect to Claude
+                        </button>
                         <button
                             type="button"
                             onClick={() => {

@@ -1,4 +1,3 @@
-import { STACKY_USER_ID } from './config.js'
 import { FieldValue, PROJECTS, WORKSPACES, db } from './firestore.js'
 import { assertWorkspace } from './scope.js'
 
@@ -22,7 +21,7 @@ function slugify(name: string): string {
   )
 }
 
-export async function createWorkspace(input: {
+export async function createWorkspace(userId: string, input: {
   name: string
   description?: string
   visibility?: 'private' | 'shared'
@@ -32,15 +31,15 @@ export async function createWorkspace(input: {
     slug: slugify(input.name),
     ...(input.description ? { description: input.description } : {}),
     visibility: input.visibility ?? 'private',
-    ownerId: STACKY_USER_ID,
-    memberIds: [STACKY_USER_ID],
+    ownerId: userId,
+    memberIds: [userId],
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   })
 
   // The UI lists members from this subcollection, not from memberIds.
-  await ref.collection(MEMBERS).doc(STACKY_USER_ID).set({
-    userId: STACKY_USER_ID,
+  await ref.collection(MEMBERS).doc(userId).set({
+    userId,
     role: 'owner',
     joinedAt: FieldValue.serverTimestamp(),
     displayName: null,
@@ -50,21 +49,21 @@ export async function createWorkspace(input: {
   return ref.id
 }
 
-export async function createProject(input: {
+export async function createProject(userId: string, input: {
   workspaceId: string
   name: string
   description?: string
   status?: 'active' | 'on_hold' | 'completed'
   health?: 'on_track' | 'at_risk' | 'behind'
 }) {
-  await assertWorkspace(input.workspaceId)
+  await assertWorkspace(userId, input.workspaceId)
   const ref = await db.collection(PROJECTS).add({
     workspaceId: input.workspaceId,
     name: input.name,
     ...(input.description ? { description: input.description } : {}),
     status: input.status ?? 'active',
     ...(input.health ? { health: input.health } : {}),
-    createdBy: STACKY_USER_ID,
+    createdBy: userId,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   })
