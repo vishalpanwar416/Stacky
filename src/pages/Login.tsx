@@ -42,6 +42,36 @@ const features = [
   },
 ]
 
+
+/** Exactly the tools mcp/src/server.ts registers — kept in step with it. */
+const mcpTools = [
+  {
+    group: 'Plan',
+    items: [
+      { name: 'list_workspaces', blurb: 'See every workspace you belong to' },
+      { name: 'create_workspace', blurb: 'Start a new one' },
+      { name: 'list_projects', blurb: 'Browse a workspace’s projects' },
+      { name: 'create_project', blurb: 'Add a project' },
+    ],
+  },
+  {
+    group: 'Work the board',
+    items: [
+      { name: 'list_tasks', blurb: 'Filter by status, priority or project' },
+      { name: 'get_task', blurb: 'Read one task in full' },
+      { name: 'create_task', blurb: 'File a bug or a chore mid-thought' },
+      { name: 'update_task', blurb: 'Repriorise, reassign, reschedule' },
+    ],
+  },
+  {
+    group: 'Close the loop',
+    items: [
+      { name: 'close_task', blurb: 'Mark it done with a note' },
+      { name: 'comment_on_task', blurb: 'Leave the reasoning behind' },
+    ],
+  },
+]
+
 function FeatureIcon({ name }: { name: string }) {
   const style = { color: 'var(--color-accent)' }
   switch (name) {
@@ -318,6 +348,76 @@ export function Login() {
           </div>
         </section>
       </main>
+
+      {/* MCP spotlight — the thing that makes Stacky different, so it gets its
+          own section rather than one card among six. */}
+      <section className="w-full border-t" style={{ borderColor: 'var(--color-border)' }}>
+        <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 py-14 sm:py-20">
+          <div className="grid gap-10 lg:grid-cols-[1fr_1.05fr] lg:gap-14 items-start">
+
+            <div>
+              <span className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium theme-accent-bg">
+                <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" aria-hidden style={{ color: 'var(--color-accent)' }} />
+                Model Context Protocol
+              </span>
+              <h2 className="mt-4 text-2xl sm:text-3xl lg:text-4xl font-bold font-display tracking-tight" style={{ color: 'var(--color-text)' }}>
+                Let Claude keep the board honest
+              </h2>
+              <p className="mt-4 max-w-xl text-sm sm:text-base theme-page-muted leading-relaxed">
+                You notice the bug while you are deep in the code. Tell Claude, and it files
+                the task in the right project, with the right priority — then closes it when
+                the fix lands. The tracker stops being somewhere you go and becomes something
+                your assistant maintains.
+              </p>
+
+              <div className="mt-7">
+                <p className="text-xs font-semibold uppercase tracking-wider theme-page-muted">
+                  Connect in one command
+                </p>
+                <pre className="mt-3 overflow-x-auto rounded-2xl border p-4 text-[11px] sm:text-xs leading-relaxed"
+                  style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}>
+<code>{`claude mcp add --transport http stacky \\
+  https://stackyy.vercel.app/api/mcp \\
+  --header "Authorization: Bearer stk_your_token"`}</code>
+                </pre>
+                <p className="mt-3 text-xs theme-page-muted leading-relaxed">
+                  Generate a token from your profile menu once you are signed in. It is scoped
+                  to your account, works with Claude Code, Claude Desktop or any MCP client,
+                  and you can revoke it at any time.
+                </p>
+              </div>
+            </div>
+
+            <div className="w-full">
+              <p className="text-xs font-semibold uppercase tracking-wider theme-page-muted mb-4">
+                Ten tools, no wrappers
+              </p>
+              <div className="flex flex-col gap-5">
+                {mcpTools.map((section) => (
+                  <div key={section.group}>
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-accent)' }}>
+                      {section.group}
+                    </p>
+                    <ul className="grid gap-2 sm:grid-cols-2">
+                      {section.items.map((tool) => (
+                        <li key={tool.name}
+                          className="rounded-xl border p-3 transition-colors duration-300 hover:border-(--color-accent)/30"
+                          style={{ background: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
+                          <code className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>
+                            {tool.name}
+                          </code>
+                          <p className="mt-1 text-[11px] theme-page-muted leading-snug">{tool.blurb}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
 
       <footer className="border-t py-3 sm:py-4" style={{ borderColor: 'var(--color-border)' }}>
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-2">
