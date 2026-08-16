@@ -1,9 +1,9 @@
 /**
  * End-to-end test of POST /api/invite, including real email delivery.
  *
- * Uses a disposable workspace so no real invitation is touched, and asserts the
- * two cases that matter with an unverified Resend domain: the account owner's
- * address is delivered, and any other address fails loudly rather than silently.
+ * Uses a disposable workspace so no real invitation is touched. Since sanero.in
+ * was verified, delivery is expected for any recipient — the assertions here
+ * used to encode the unverified-domain limitation, which no longer applies.
  *
  *   node scripts/invite-email-test.mjs [base-url]
  */
@@ -17,10 +17,10 @@ import { db } from '../dist/firestore.js'
 const BASE = process.argv[2] ?? 'http://localhost:5176'
 const OWNER = 'gG3YSXzLDJY5i6KSd8xVLFIxGv33'
 const READONLY_USER = 'LrpJq6Iu4NcIhikIljiOdb6OUhZ2'
-const DELIVERABLE = 'vishalpanwar416a@gmail.com' // owns the Resend account
-// A real domain, not example.com: Resend rejects reserved test domains with a
-// different error than the unverified-recipient case this is checking.
-const UNDELIVERABLE = 'stacky.invite.probe@gmail.com'
+const DELIVERABLE = 'vishalpanwar416a@gmail.com'
+// An address unrelated to any Stacky or Resend account: with a verified sending
+// domain this must be delivered just like any other.
+const UNRELATED = 'stacky.invite.probe@gmail.com'
 
 let failures = 0
 const check = (label, cond, detail = '') => {
@@ -87,24 +87,18 @@ check('readonly member cannot invite', byReadonly.status === 403, `HTTP ${byRead
 const badEmail = await post(ownerToken, { workspaceId: ws.id, email: 'not-an-email' })
 check('malformed address refused', badEmail.status === 400, `HTTP ${badEmail.status}`)
 
-// --- the deliverable case ------------------------------------------------
+// --- delivery ------------------------------------------------------------
 const good = await post(ownerToken, { workspaceId: ws.id, email: DELIVERABLE })
 const goodBody = await good.json()
-check('invite to the Resend account owner succeeds', good.status === 200, `HTTP ${good.status}`)
-check('  and reports the email as sent', goodBody.emailed === true, JSON.stringify(goodBody.emailError))
+check('invite succeeds', good.status === 200, `HTTP ${good.status}`)
+check('  and the email was sent', goodBody.emailed === true, JSON.stringify(goodBody.emailError))
 
-// --- the undeliverable case must not lie ---------------------------------
-const blocked = await post(ownerToken, { workspaceId: ws.id, email: UNDELIVERABLE })
+const blocked = await post(ownerToken, { workspaceId: ws.id, email: UNRELATED })
 const blockedBody = await blocked.json()
-check('invite to any other address still creates the invitation', blocked.status === 200, `HTTP ${blocked.status}`)
-check('  but reports the email as NOT sent', blockedBody.emailed === false)
-check(
-  '  with a reason naming the cause',
-  /verified domain/i.test(blockedBody.emailError ?? ''),
-  blockedBody.emailError
-)
+check('invite to an unrelated address succeeds', blocked.status === 200, `HTTP ${blocked.status}`)
+check('  and that email was sent too', blockedBody.emailed === true, JSON.stringify(blockedBody.emailError))
 const stored = await db.collection('invitations').doc(blockedBody.invitationId ?? 'x').get()
-check('  and the invitation really exists', stored.exists)
+check('  and the invitation exists', stored.exists)
 
 // --- duplicates ----------------------------------------------------------
 const dupe = await post(ownerToken, { workspaceId: ws.id, email: DELIVERABLE })
