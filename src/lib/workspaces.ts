@@ -227,10 +227,16 @@ export async function removeMember(
 export const leaveWorkspace = (workspaceId: string) => removeMember(workspaceId)
 
 /**
- * Connects a GitHub repository to this workspace so pushes and pull requests
- * can be matched against its tasks. Owner-only, enforced server-side.
+ * Connects a GitHub repository to a project, so pushes and pull requests are
+ * matched against that project's tasks rather than everything in the
+ * workspace. Owner-only, enforced server-side.
  */
-export async function linkRepo(workspaceId: string, repo: string, connect: boolean) {
+export async function linkRepo(
+  workspaceId: string,
+  projectId: string,
+  repo: string,
+  connect: boolean
+) {
   const user = getAuth().currentUser
   if (!user) throw new Error('Sign in first.')
   const res = await fetch('/api/repo-link', {
@@ -239,7 +245,7 @@ export async function linkRepo(workspaceId: string, repo: string, connect: boole
       'Content-Type': 'application/json',
       Authorization: `Bearer ${await user.getIdToken()}`,
     },
-    body: JSON.stringify({ workspaceId, repo }),
+    body: JSON.stringify({ workspaceId, projectId, repo }),
   })
   if (!res.headers.get('content-type')?.includes('application/json')) {
     throw new Error('API routes are not running. Start the dev server with npm run dev.')
@@ -296,6 +302,21 @@ export async function listGithubRepos(): Promise<{
   }
   if (!res.ok) return { connected: false, repos: [] }
   return res.json()
+}
+
+/** Which repository each project in this workspace is connected to. */
+export async function listRepoLinks(
+  workspaceId: string
+): Promise<{ repo: string; projectId: string | null }[]> {
+  const user = getAuth().currentUser
+  if (!user) return []
+  const res = await fetch(`/api/repo-link?workspaceId=${encodeURIComponent(workspaceId)}`, {
+    headers: { Authorization: `Bearer ${await user.getIdToken()}` },
+  })
+  if (!res.headers.get('content-type')?.includes('application/json')) return []
+  if (!res.ok) return []
+  const { links } = await res.json()
+  return links ?? []
 }
 
 export async function getWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {

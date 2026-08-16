@@ -4,14 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vercel dev --listen 5173",
+    "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "deploy": "npm run build && firebase deploy",
     "server:example": "node server/example-usage.mjs",
     "repo:create": "gh repo create Stacky --public --source=. --remote=origin --push --description 'Stacky - task queue app with Firebase'",
-    "dev:vite": "vite"
+    "start": "npx vercel dev --listen 5173"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

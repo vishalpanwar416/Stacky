@@ -74,8 +74,8 @@ async function ensureWebhook(uid: string, repo: string): Promise<{ webhook: stri
 }
 
 export default async function handler(req: any, res: any) {
-  if (!['POST', 'DELETE'].includes(req.method)) {
-    return res.status(405).json({ error: 'Use POST or DELETE.' })
+  if (!['GET', 'POST', 'DELETE'].includes(req.method)) {
+    return res.status(405).json({ error: 'Use GET, POST or DELETE.' })
   }
 
   const idToken = readBearer(req.headers.authorization)
@@ -88,10 +88,25 @@ export default async function handler(req: any, res: any) {
     return res.status(401).json({ error: 'Invalid or expired session.' })
   }
 
+  // Reading back what is connected, so the UI can show it per project.
+  if (req.method === 'GET') {
+    const workspaceId = String(req.query?.workspaceId ?? '').trim()
+    if (!workspaceId) return res.status(400).json({ error: 'workspaceId is required.' })
+    const links = await db.collection('repoLinks').where('workspaceId', '==', workspaceId).get()
+    return res.status(200).json({
+      links: links.docs.map((d) => ({
+        repo: d.data().repo,
+        projectId: d.data().projectId ?? null,
+      })),
+    })
+  }
+
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
   const workspaceId = String(body.workspaceId ?? '').trim()
+  const projectId = String(body.projectId ?? '').trim()
   const repo = String(body.repo ?? '').trim().toLowerCase()
   if (!workspaceId) return res.status(400).json({ error: 'workspaceId is required.' })
+  if (!projectId) return res.status(400).json({ error: 'projectId is required.' })
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) {
     return res.status(400).json({ error: 'Use the owner/repository form, e.g. vishalpanwar416/Stacky.' })
   }
@@ -101,6 +116,14 @@ export default async function handler(req: any, res: any) {
     if (!ws.exists) return res.status(404).json({ error: 'That workspace no longer exists.' })
     if (ws.data()!.ownerId !== uid) {
       return res.status(403).json({ error: 'Only the workspace owner can connect a repository.' })
+    }
+
+    // A repository is connected to one project, so the project has to be real
+    // and in this workspace — otherwise a link could point suggestions at
+    // another workspace's tasks.
+    const project = await db.collection('projects').doc(projectId).get()
+    if (!project.exists || project.data()!.workspaceId !== workspaceId) {
+      return res.status(404).json({ error: 'That project is not in this workspace.' })
     }
 
     const ref = db.collection('repoLinks').doc(docId(repo))
@@ -118,10 +141,14 @@ export default async function handler(req: any, res: any) {
     if (existing.exists && existing.data()!.workspaceId !== workspaceId) {
       return res.status(409).json({ error: 'That repository is already linked to another workspace.' })
     }
+    if (existing.exists && existing.data()!.projectId && existing.data()!.projectId !== projectId) {
+      return res.status(409).json({ error: 'That repository is already connected to another project.' })
+    }
 
     await ref.set({
       repo,
       workspaceId,
+      projectId,
       // Whose AI budget the webhook spends.
       linkedBy: uid,
       linkedAt: FieldValue.serverTimestamp(),

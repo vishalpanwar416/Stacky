@@ -158,7 +158,11 @@ export default async function handler(req: any, res: any) {
     if (!link.exists) {
       return res.status(200).json({ ok: true, skipped: 'repository is not linked to a workspace' })
     }
-    const { workspaceId, linkedBy } = link.data() as { workspaceId: string; linkedBy: string }
+    const { workspaceId, projectId, linkedBy } = link.data() as {
+      workspaceId: string
+      projectId?: string
+      linkedBy: string
+    }
 
     const change = describe(event, payload)
     if (!change) return res.status(200).json({ ok: true, skipped: 'nothing actionable in this event' })
@@ -173,15 +177,22 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ ok: true, skipped: 'AI budget reached' })
     }
 
-    const snap = await db
-      .collection('tasks')
-      .where('workspaceId', '==', workspaceId)
-      .where('status', 'in', ['backlog', 'planned', 'in_progress', 'blocked'])
-      .limit(MAX_TASKS)
-      .get()
-    if (snap.empty) return res.status(200).json({ ok: true, skipped: 'no open tasks' })
+    // A repository maps to one project, so only that project's tasks are
+    // candidates — a change in one repository should not be matched against
+    // unrelated work elsewhere in the workspace.
+    //
+    // Filtered on projectId alone and narrowed in memory: adding status to the
+    // query would need a composite index for a set this small.
+    const snap = projectId
+      ? await db.collection('tasks').where('projectId', '==', projectId).limit(500).get()
+      : await db.collection('tasks').where('workspaceId', '==', workspaceId).limit(500).get()
 
-    const tasks = snap.docs.map((d) => ({
+    const open = snap.docs.filter((d) =>
+      ['backlog', 'planned', 'in_progress', 'blocked'].includes(d.data().status)
+    )
+    if (open.length === 0) return res.status(200).json({ ok: true, skipped: 'no open tasks' })
+
+    const tasks = open.slice(0, MAX_TASKS).map((d) => ({
       id: d.id,
       title: clip(d.data().title, MAX_TITLE),
       status: d.data().status,
@@ -220,6 +231,7 @@ export default async function handler(req: any, res: any) {
       const task = tasks.find((t) => t.id === m.taskId)!
       batch.set(db.collection('gitSuggestions').doc(), {
         workspaceId,
+        projectId: projectId ?? null,
         taskId: m.taskId,
         taskTitle: task.title,
         currentStatus: task.status,

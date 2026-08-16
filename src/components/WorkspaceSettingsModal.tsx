@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { getWorkspaceMembers, createInvitation, updateMemberRole, removeMember, linkRepo, listGithubRepos, normaliseRepo, type GithubRepo } from '../lib/workspaces'
+import { getWorkspaceMembers, createInvitation, updateMemberRole, removeMember, linkRepo, listGithubRepos, listRepoLinks, normaliseRepo, type GithubRepo } from '../lib/workspaces'
 import { searchUsers } from '../lib/users'
-import type { Workspace, WorkspaceMember, UserProfile, WorkspaceRole } from '../types'
+import type { Workspace, WorkspaceMember, UserProfile, WorkspaceRole, Project } from '../types'
+import { getProjectsByWorkspace } from '../lib/projects'
 
 const ROLE_LABEL: Record<WorkspaceRole, string> = {
     owner: 'Owner',
@@ -86,8 +87,10 @@ export function WorkspaceSettingsModal({
     }
 
     const [savingRole, setSavingRole] = useState<string | null>(null)
-    const [repo, setRepo] = useState((workspace as { repo?: string }).repo ?? '')
-    const [linkingRepo, setLinkingRepo] = useState(false)
+    const [projects, setProjects] = useState<Project[]>([])
+    // projectId -> the repository chosen for it
+    const [projectRepo, setProjectRepo] = useState<Record<string, string>>({})
+    const [linkingRepo, setLinkingRepo] = useState<string | null>(null)
     const [repos, setRepos] = useState<GithubRepo[]>([])
     const [reposLoading, setReposLoading] = useState(false)
     const [githubConnected, setGithubConnected] = useState<boolean | null>(null)
@@ -98,6 +101,16 @@ export function WorkspaceSettingsModal({
         if (!isOpen || activeTab !== 'members') return
         let cancelled = false
         setReposLoading(true)
+        Promise.all([getProjectsByWorkspace(workspace.id), listRepoLinks(workspace.id)])
+            .then(([list, links]) => {
+                if (cancelled) return
+                setProjects(list)
+                setProjectRepo(
+                    Object.fromEntries(links.filter((l) => l.projectId).map((l) => [l.projectId!, l.repo]))
+                )
+            })
+            .catch(() => { })
+
         listGithubRepos()
             .then((r) => {
                 if (cancelled) return
@@ -112,17 +125,18 @@ export function WorkspaceSettingsModal({
         }
     }, [isOpen, activeTab])
 
-    const handleLinkRepo = async (connect: boolean) => {
-        // Accept a pasted URL, and say what is wrong with a profile link.
-        const parsed = normaliseRepo(repo)
+    const handleLinkRepo = async (projectId: string, connect: boolean) => {
+        const raw = projectRepo[projectId] ?? ''
+        const parsed = normaliseRepo(raw)
         if ('error' in parsed) {
             toast(parsed.error, 'error')
             return
         }
-        setLinkingRepo(true)
+        setLinkingRepo(projectId)
         try {
-            const result = await linkRepo(workspace.id, parsed.repo, connect)
+            const result = await linkRepo(workspace.id, projectId, parsed.repo, connect)
             if (!connect) {
+                setProjectRepo((prev) => ({ ...prev, [projectId]: '' }))
                 toast('Repository disconnected', 'success')
             } else if (result.webhook === 'registered' || result.webhook === 'already registered') {
                 toast(`Connected ${result.repo} — webhook ${result.webhook}`, 'success')
@@ -130,14 +144,14 @@ export function WorkspaceSettingsModal({
                 // Linked, but nothing will arrive until a hook exists. Say so.
                 toast(`Connected ${result.repo}, but the webhook was not set up: ${result.webhook}`, 'error')
             }
-            if (!connect) setRepo('')
         } catch (error) {
             console.error(error)
             toast(error instanceof Error ? error.message : 'Could not update the repository', 'error')
         } finally {
-            setLinkingRepo(false)
+            setLinkingRepo(null)
         }
     }
+
     const isOwner = workspace.ownerId === user?.uid
 
     /**
@@ -412,9 +426,9 @@ export function WorkspaceSettingsModal({
 
                             {isOwner && (
                                 <div className="mb-5 rounded-xl border theme-border p-3">
-                                    <p className="text-xs font-semibold uppercase tracking-wider theme-text-muted">GitHub repository</p>
+                                    <p className="text-xs font-semibold uppercase tracking-wider theme-text-muted">GitHub repositories</p>
                                     <p className="mt-1 text-xs theme-text-muted">
-                                        Pushes and pull requests here are matched against this workspace's tasks, and Stacky suggests status changes for you to approve.
+                                        A repository is connected to one project. Its pushes and pull requests are matched against that project's tasks, and Stacky suggests status changes for you to approve.
                                         {githubConnected === false && !reposError && ' Connect GitHub in Settings to pick from a list and have the webhook set up for you.'}
                                     </p>
                                     {reposError && (
@@ -422,51 +436,69 @@ export function WorkspaceSettingsModal({
                                             {reposError}
                                         </p>
                                     )}
-                                    <div className="mt-3 flex gap-2">
-                                        {githubConnected === false ? (
-                                            <input
-                                                value={repo}
-                                                onChange={(e) => setRepo(e.target.value)}
-                                                placeholder="owner/repository"
-                                                className="min-w-0 flex-1 rounded-xl theme-input px-3 py-2 text-sm"
-                                            />
-                                        ) : (
-                                            <select
-                                                value={repo}
-                                                onChange={(e) => setRepo(e.target.value)}
-                                                disabled={reposLoading}
-                                                className="min-w-0 flex-1 select-input text-sm"
-                                            >
-                                                <option value="">
-                                                    {reposLoading ? 'Loading your repositories…' : 'Choose a repository'}
-                                                </option>
-                                                {repos.map((r) => (
-                                                    <option key={r.fullName} value={r.fullName}>
-                                                        {r.fullName}
-                                                        {r.private ? ' · private' : ''}
-                                                        {r.canAdmin ? '' : ' · no hook access'}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        )}
-                                        <button
-                                            type="button"
-                                            disabled={linkingRepo || !repo.trim()}
-                                            onClick={() => handleLinkRepo(true)}
-                                            className="shrink-0 rounded-xl border theme-border px-3 py-2 text-xs font-medium theme-text transition-colors theme-surface-hover-bg disabled:opacity-40"
-                                        >
-                                            {linkingRepo ? 'Saving…' : 'Connect'}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            disabled={linkingRepo || !repo.trim()}
-                                            onClick={() => handleLinkRepo(false)}
-                                            className="shrink-0 rounded-xl px-2 py-2 text-xs theme-text-faint transition-colors hover:text-red-400 disabled:opacity-40"
-                                            title="Disconnect"
-                                        >
-                                            Remove
-                                        </button>
-                                    </div>
+
+                                    {projects.length === 0 ? (
+                                        <p className="mt-3 text-xs theme-text-faint">
+                                            This workspace has no projects yet. Create one and it will appear here.
+                                        </p>
+                                    ) : (
+                                        <div className="mt-3 flex flex-col gap-3">
+                                            {projects.map((project) => {
+                                                const value = projectRepo[project.id] ?? ''
+                                                const busy = linkingRepo === project.id
+                                                return (
+                                                    <div key={project.id}>
+                                                        <p className="mb-1.5 text-xs font-medium theme-text">{project.name}</p>
+                                                        <div className="flex gap-2">
+                                                            {githubConnected === false ? (
+                                                                <input
+                                                                    value={value}
+                                                                    onChange={(e) => setProjectRepo((prev) => ({ ...prev, [project.id]: e.target.value }))}
+                                                                    placeholder="owner/repository"
+                                                                    className="min-w-0 flex-1 rounded-xl theme-input px-3 py-2 text-sm"
+                                                                />
+                                                            ) : (
+                                                                <select
+                                                                    value={value}
+                                                                    onChange={(e) => setProjectRepo((prev) => ({ ...prev, [project.id]: e.target.value }))}
+                                                                    disabled={reposLoading}
+                                                                    className="min-w-0 flex-1 select-input text-sm"
+                                                                >
+                                                                    <option value="">
+                                                                        {reposLoading ? 'Loading your repositories…' : 'Not connected'}
+                                                                    </option>
+                                                                    {repos.map((r) => (
+                                                                        <option key={r.fullName} value={r.fullName}>
+                                                                            {r.fullName}
+                                                                            {r.private ? ' · private' : ''}
+                                                                            {r.canAdmin ? '' : ' · no hook access'}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            )}
+                                                            <button
+                                                                type="button"
+                                                                disabled={busy || !value.trim()}
+                                                                onClick={() => handleLinkRepo(project.id, true)}
+                                                                className="shrink-0 rounded-xl border theme-border px-3 py-2 text-xs font-medium theme-text transition-colors theme-surface-hover-bg disabled:opacity-40"
+                                                            >
+                                                                {busy ? 'Saving…' : 'Connect'}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                disabled={busy || !value.trim()}
+                                                                onClick={() => handleLinkRepo(project.id, false)}
+                                                                className="shrink-0 rounded-xl px-2 py-2 text-xs theme-text-faint transition-colors hover:text-red-400 disabled:opacity-40"
+                                                                title="Disconnect"
+                                                            >
+                                                                Remove
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
