@@ -1,3 +1,10 @@
+/**
+ * Workspace roles. `owner` is the single account in the workspace's ownerId;
+ * `member` has full read/write; `readonly` can see everything and change
+ * nothing. Enforced in firestore.rules — the client only mirrors it.
+ */
+export type WorkspaceRole = 'owner' | 'member' | 'readonly'
+
 import type { Timestamp } from 'firebase/firestore'
 
 export type TaskStatus = 'backlog' | 'planned' | 'in_progress' | 'blocked' | 'done'
@@ -57,7 +64,7 @@ export interface Workspace {
 export interface WorkspaceMember {
   id: string
   userId: string
-  role: 'owner' | 'member'
+  role: WorkspaceRole
   joinedAt: Timestamp
   displayName?: string
   email?: string
@@ -124,7 +131,7 @@ export interface WorkspaceInvitation {
   workspaceId: string
   invitedEmail: string
   status: 'pending' | 'accepted' | 'declined'
-  role: 'member' | 'admin'
+  role: Exclude<WorkspaceRole, 'owner'>
   invitedBy: string // user id of who sent the invite
   createdAt: Timestamp
   updatedAt: Timestamp

@@ -16,7 +16,7 @@ import type { Unsubscribe } from 'firebase/firestore'
 import { getAuth, getDb } from './firebase'
 import { getUserByEmail } from './users'
 import { createNotification } from './notifications'
-import type { Workspace, WorkspaceMember } from '../types'
+import type { WorkspaceRole, Workspace, WorkspaceMember } from '../types'
 
 const WORKSPACES = 'workspaces'
 const MEMBERS = 'members'
@@ -175,6 +175,25 @@ export async function deleteWorkspace(id: string) {
   membersSnap.docs.forEach((d) => batch.delete(d.ref))
   batch.delete(doc(getDb(), WORKSPACES, id))
   await batch.commit()
+}
+
+/**
+ * Changes a member's role. Owner-only, enforced by firestore.rules — this
+ * function failing with a permission error is the rule doing its job.
+ *
+ * The owner's own role is not changeable: ownership is the workspaces document's
+ * ownerId, not this field, so demoting it here would misreport rather than
+ * remove their access.
+ */
+export async function updateMemberRole(
+  workspaceId: string,
+  userId: string,
+  role: Exclude<WorkspaceRole, 'owner'>
+) {
+  await updateDoc(doc(getDb(), WORKSPACES, workspaceId, MEMBERS, userId), {
+    role,
+    updatedAt: serverTimestamp(),
+  })
 }
 
 export async function getWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {

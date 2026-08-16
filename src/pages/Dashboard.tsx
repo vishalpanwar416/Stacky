@@ -105,7 +105,7 @@ export function Dashboard() {
   const navigate = useNavigate()
   const { user, profile, connectGoogleCalendar } = useAuth()
   const { toast: pushToast } = useToast()
-  const { workspaces, currentWorkspace, setCurrentWorkspaceId, refreshWorkspaces, loading: wsLoading } = useWorkspace()
+  const { workspaces, currentWorkspace, setCurrentWorkspaceId, refreshWorkspaces, loading: wsLoading , canWrite } = useWorkspace()
   const maxInProgress = profile?.preferences?.maxInProgress ?? MAX_IN_PROGRESS
   const [tasks, setTasks] = useState<Task[]>([])
   const [tasksLoading, setTasksLoading] = useState(true)
@@ -200,7 +200,7 @@ export function Dashboard() {
   const projectIndex = !projectFilter ? 0 : projects.findIndex((p) => p.id === projectFilter) + 1
 
   useKeyboardShortcuts({
-    onNewTask: currentWorkspace ? () => navigate(`/workspaces/${currentWorkspace.id}/tasks/new`) : undefined,
+    onNewTask: currentWorkspace && canWrite ? () => navigate(`/workspaces/${currentWorkspace.id}/tasks/new`) : undefined,
     onNewWorkspace: () => navigate('/workspaces/new'),
     onShortcutsHelp: () => setShortcutsOpen(true),
     onSearch: () => setCommandBarOpen(true),
@@ -671,13 +671,24 @@ export function Dashboard() {
                     </svg>
                     <span className="hidden sm:inline">Members</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/workspaces/${currentWorkspace.id}/tasks/new`)}
-                    className="rounded-2xl theme-surface-bg theme-border border px-5 py-2.5 text-sm font-medium theme-text transition-all duration-300 theme-surface-hover-bg hover:scale-[1.02] active:scale-[0.99]"
-                  >
-                    New task
-                  </button>
+                  {canWrite ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/workspaces/${currentWorkspace.id}/tasks/new`)}
+                      className="rounded-2xl theme-surface-bg theme-border border px-5 py-2.5 text-sm font-medium theme-text transition-all duration-300 theme-surface-hover-bg hover:scale-[1.02] active:scale-[0.99]"
+                    >
+                      New task
+                    </button>
+                  ) : (
+                    /* Read-only members are told why, rather than being shown a
+                       button that firestore.rules will refuse. */
+                    <span
+                      className="rounded-2xl border theme-border px-3 py-1.5 text-xs font-medium theme-text-muted"
+                      title="You have read-only access to this workspace"
+                    >
+                      Read only
+                    </span>
+                  )}
                 </div>
               </div>
 

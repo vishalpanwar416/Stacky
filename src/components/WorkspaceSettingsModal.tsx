@@ -1,7 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
-import { getWorkspaceMembers, createInvitation } from '../lib/workspaces'
+import { getWorkspaceMembers, createInvitation, updateMemberRole } from '../lib/workspaces'
 import { searchUsers } from '../lib/users'
-import type { Workspace, WorkspaceMember, UserProfile } from '../types'
+import type { Workspace, WorkspaceMember, UserProfile, WorkspaceRole } from '../types'
+
+const ROLE_LABEL: Record<WorkspaceRole, string> = {
+    owner: 'Owner',
+    member: 'Member',
+    readonly: 'Read only',
+}
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -76,6 +82,31 @@ export function WorkspaceSettingsModal({
             toast('Failed to load members', 'error')
         } finally {
             setMembersLoading(false)
+        }
+    }
+
+    const [savingRole, setSavingRole] = useState<string | null>(null)
+    const isOwner = workspace.ownerId === user?.uid
+
+    /**
+     * The workspace's ownerId is the authority on ownership, not the member
+     * row's role field — those disagreed on older rows, which is why the owner
+     * could appear as an ordinary member.
+     */
+    const roleOf = (member: WorkspaceMember): WorkspaceRole =>
+        member.userId === workspace.ownerId ? 'owner' : (member.role ?? 'member')
+
+    const handleRoleChange = async (userId: string, role: 'member' | 'readonly') => {
+        setSavingRole(userId)
+        try {
+            await updateMemberRole(workspace.id, userId, role)
+            setMembers((prev) => prev.map((m): WorkspaceMember => (m.userId === userId ? { ...m, role } : m)))
+            toast(`Role updated to ${ROLE_LABEL[role]}`, 'success')
+        } catch (error) {
+            console.error(error)
+            toast('Failed to update role', 'error')
+        } finally {
+            setSavingRole(null)
         }
     }
 
@@ -313,8 +344,8 @@ export function WorkspaceSettingsModal({
                                         {[...members].sort((a, b) => {
                                             if (a.userId === user?.uid) return -1
                                             if (b.userId === user?.uid) return 1
-                                            if (a.role === 'owner') return -1
-                                            if (b.role === 'owner') return 1
+                                            if (roleOf(a) === 'owner') return -1
+                                            if (roleOf(b) === 'owner') return 1
                                             return 0
                                         }).map((member) => (
                                             <div key={member.userId} className="flex items-center justify-between rounded-lg p-2 hover:bg-white/5">
@@ -332,12 +363,27 @@ export function WorkspaceSettingsModal({
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-tight ${member.role === 'owner'
-                                                    ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
-                                                    : 'bg-white/10 theme-text-muted'
-                                                    }`}>
-                                                    {member.role}
-                                                </span>
+                                                {roleOf(member) === 'owner' || !isOwner ? (
+                                                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-tight ${roleOf(member) === 'owner'
+                                                        ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                                                        : roleOf(member) === 'readonly'
+                                                            ? 'bg-white/5 theme-text-faint border border-white/10'
+                                                            : 'bg-white/10 theme-text-muted'
+                                                        }`}>
+                                                        {ROLE_LABEL[roleOf(member)]}
+                                                    </span>
+                                                ) : (
+                                                    <select
+                                                        value={roleOf(member)}
+                                                        disabled={savingRole === member.userId}
+                                                        onChange={(e) => handleRoleChange(member.userId, e.target.value as 'member' | 'readonly')}
+                                                        className="select-input text-xs disabled:opacity-50"
+                                                        aria-label={`Role for ${displayFor(member).name ?? displayFor(member).email ?? 'member'}`}
+                                                    >
+                                                        <option value="member">Member</option>
+                                                        <option value="readonly">Read only</option>
+                                                    </select>
+                                                )}
                                             </div>
                                         ))}
 

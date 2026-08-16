@@ -7,10 +7,16 @@ import {
   type ReactNode,
 } from 'react'
 import { useAuth } from './AuthContext'
+import { doc, getDoc } from 'firebase/firestore'
+import { getDb } from '../lib/firebase'
 import { getWorkspacesForUser, subscribeWorkspaces } from '../lib/workspaces'
-import type { Workspace } from '../types'
+import type { Workspace, WorkspaceRole } from '../types'
 
 interface WorkspaceContextValue {
+  /** The signed-in user's role in the current workspace. */
+  currentRole: WorkspaceRole
+  /** False when the role is readonly. Convenience only — rules are the boundary. */
+  canWrite: boolean
   workspaces: Workspace[]
   currentWorkspace: Workspace | null
   setCurrentWorkspaceId: (id: string | null) => void
@@ -31,6 +37,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   })
   const [loading, setLoading] = useState(true)
+  const [currentRole, setCurrentRole] = useState<WorkspaceRole>('member')
 
   useEffect(() => {
     if (!user) {
@@ -61,6 +68,32 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }, [workspaces, currentWorkspaceId, loading])
 
+  // Mirror the role so the UI can stop offering actions that firestore.rules
+  // will refuse. This is presentation only: a stale or wrong value here changes
+  // nothing about what the server actually permits.
+  useEffect(() => {
+    const workspace = workspaces.find((w) => w.id === currentWorkspaceId) ?? workspaces[0] ?? null
+    if (!user || !workspace) {
+      setCurrentRole('member')
+      return
+    }
+    if (workspace.ownerId === user.uid) {
+      setCurrentRole('owner')
+      return
+    }
+    let cancelled = false
+    getDoc(doc(getDb(), 'workspaces', workspace.id, 'members', user.uid))
+      .then((snap) => {
+        if (!cancelled) setCurrentRole((snap.data()?.role as WorkspaceRole) ?? 'member')
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentRole('member')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user, workspaces, currentWorkspaceId])
+
   const refreshWorkspaces = useCallback(async () => {
     if (!user) return
     const list = await getWorkspacesForUser(user.uid)
@@ -86,6 +119,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setCurrentWorkspaceId: setCurrentWorkspaceId,
         refreshWorkspaces,
         loading,
+        currentRole,
+        canWrite: currentRole !== 'readonly',
       }}
     >
       {children}

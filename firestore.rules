@@ -23,6 +23,27 @@ service cloud.firestore {
       );
     }
 
+    // The member row is where a role lives. Absent or unset means 'member',
+    // so existing rows keep working without a migration and a missing row can
+    // never silently downgrade someone who is legitimately in memberIds.
+    function memberRole(workspaceId) {
+      let path = /databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid);
+      return isSignedIn() && exists(path) ? get(path).data.get('role', 'member') : 'member';
+    }
+
+    // Read access. Roles do not gate reading — every member sees the workspace.
+    function canRead(workspaceId) {
+      return isWorkspaceMember(workspaceId);
+    }
+
+    // Write access. The owner always writes; everyone else must not be readonly.
+    // This is the whole point of the role, so it is enforced here rather than in
+    // the client, which can only ever be a convenience.
+    function canWrite(workspaceId) {
+      return isOwnerOfWorkspace(workspaceId)
+        || (isWorkspaceMember(workspaceId) && memberRole(workspaceId) != 'readonly');
+    }
+
     function isTaskAssignee(task) {
       let assignees = task.data.get('assignees', {});
       return assignees != null && (
@@ -46,7 +67,13 @@ service cloud.firestore {
 
       match /members/{memberId} {
         allow read: if isWorkspaceMember(workspaceId);
-        allow create: if isSignedIn() && memberId == request.auth.uid;
+        // You may only ever create your own row, and only the workspace owner
+        // may stamp it 'owner'. A readonly member cannot escape their role this
+        // way: their row already exists, and update/delete are owner-only.
+        allow create: if isSignedIn() && memberId == request.auth.uid && (
+          isOwnerOfWorkspace(workspaceId)
+          || request.resource.data.get('role', 'member') != 'owner'
+        );
         allow update, delete: if isSignedIn() && isOwnerOfWorkspace(workspaceId);
       }
     }
@@ -56,7 +83,7 @@ service cloud.firestore {
         request.auth.token.email.lower() == resource.data.invitedEmail
         || isOwnerOfWorkspace(resource.data.workspaceId)
       );
-      allow create: if isSignedIn() && isWorkspaceMember(request.resource.data.workspaceId);
+      allow create: if isSignedIn() && canWrite(request.resource.data.workspaceId);
       allow update: if isSignedIn() && (
         request.auth.token.email.lower() == resource.data.invitedEmail
         || isOwnerOfWorkspace(resource.data.workspaceId)
@@ -70,8 +97,9 @@ service cloud.firestore {
     }
 
     match /projects/{projectId} {
-      allow read, write: if isSignedIn() && isWorkspaceMember(resource.data.workspaceId);
-      allow create: if isSignedIn() && isWorkspaceMember(request.resource.data.workspaceId);
+      allow read: if isSignedIn() && canRead(resource.data.workspaceId);
+      allow create: if isSignedIn() && canWrite(request.resource.data.workspaceId);
+      allow update, delete: if isSignedIn() && canWrite(resource.data.workspaceId);
     }
 
     match /tasks/{taskId} {
@@ -79,17 +107,19 @@ service cloud.firestore {
         isWorkspaceMember(resource.data.workspaceId)
         || isTaskAssignee(resource)
       );
-      allow create: if isSignedIn() && isWorkspaceMember(request.resource.data.workspaceId);
+      allow create: if isSignedIn() && canWrite(request.resource.data.workspaceId);
+      // An assignee who is a readonly member stays readonly; the assignee clause
+      // exists for people outside the workspace, not as a way around the role.
       allow update: if isSignedIn() && (
-        isWorkspaceMember(resource.data.workspaceId)
-        || isTaskAssignee(resource)
+        canWrite(resource.data.workspaceId)
+        || (isTaskAssignee(resource) && !isWorkspaceMember(resource.data.workspaceId))
       );
-      allow delete: if isSignedIn() && isWorkspaceMember(resource.data.workspaceId);
+      allow delete: if isSignedIn() && canWrite(resource.data.workspaceId);
     }
 
     match /tasks/{taskId}/comments/{commentId} {
       allow read: if isSignedIn() && isWorkspaceMember(get(/databases/$(database)/documents/tasks/$(taskId)).data.workspaceId);
-      allow create: if isSignedIn() && isWorkspaceMember(get(/databases/$(database)/documents/tasks/$(taskId)).data.workspaceId);
+      allow create: if isSignedIn() && canWrite(get(/databases/$(database)/documents/tasks/$(taskId)).data.workspaceId);
       allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
@@ -98,8 +128,10 @@ service cloud.firestore {
       // could write fabricated history onto a task in a workspace they cannot
       // even read. The app only ever logs activity on tasks it can reach, so
       // this costs nothing; the MCP server uses the Admin SDK and is unaffected.
-      allow read, create: if isSignedIn()
-        && isWorkspaceMember(get(/databases/$(database)/documents/tasks/$(taskId)).data.workspaceId);
+      allow read: if isSignedIn()
+        && canRead(get(/databases/$(database)/documents/tasks/$(taskId)).data.workspaceId);
+      allow create: if isSignedIn()
+        && canWrite(get(/databases/$(database)/documents/tasks/$(taskId)).data.workspaceId);
       allow update, delete: if false;
     }
 
