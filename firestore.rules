@@ -96,6 +96,13 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // GitHub OAuth tokens. These can read code and manage webhooks, so they are
+    // server-only with no exceptions — the client hands one over at sign-in and
+    // never sees it again.
+    match /githubTokens/{userId} {
+      allow read, write: if false;
+    }
+
     match /invitations/{invitationId} {
       allow read: if isSignedIn() && (
         request.auth.token.get('email', '').lower() == resource.data.invitedEmail

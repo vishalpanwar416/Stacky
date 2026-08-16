@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getWorkspaceMembers, createInvitation, updateMemberRole, removeMember, linkRepo } from '../lib/workspaces'
+import { getWorkspaceMembers, createInvitation, updateMemberRole, removeMember, linkRepo, listGithubRepos, type GithubRepo } from '../lib/workspaces'
 import { searchUsers } from '../lib/users'
 import type { Workspace, WorkspaceMember, UserProfile, WorkspaceRole } from '../types'
 
@@ -88,12 +88,40 @@ export function WorkspaceSettingsModal({
     const [savingRole, setSavingRole] = useState<string | null>(null)
     const [repo, setRepo] = useState((workspace as { repo?: string }).repo ?? '')
     const [linkingRepo, setLinkingRepo] = useState(false)
+    const [repos, setRepos] = useState<GithubRepo[]>([])
+    const [reposLoading, setReposLoading] = useState(false)
+    const [githubConnected, setGithubConnected] = useState<boolean | null>(null)
+
+    // Only ask GitHub when the tab that shows the chooser is actually open.
+    useEffect(() => {
+        if (!isOpen || activeTab !== 'members') return
+        let cancelled = false
+        setReposLoading(true)
+        listGithubRepos()
+            .then((r) => {
+                if (cancelled) return
+                setGithubConnected(r.connected)
+                setRepos(r.repos)
+            })
+            .catch(() => !cancelled && setGithubConnected(false))
+            .finally(() => !cancelled && setReposLoading(false))
+        return () => {
+            cancelled = true
+        }
+    }, [isOpen, activeTab])
 
     const handleLinkRepo = async (connect: boolean) => {
         setLinkingRepo(true)
         try {
-            await linkRepo(workspace.id, repo.trim(), connect)
-            toast(connect ? `Connected ${repo.trim()}` : 'Repository disconnected', 'success')
+            const result = await linkRepo(workspace.id, repo.trim(), connect)
+            if (!connect) {
+                toast('Repository disconnected', 'success')
+            } else if (result.webhook === 'registered' || result.webhook === 'already registered') {
+                toast(`Connected ${result.repo} — webhook ${result.webhook}`, 'success')
+            } else {
+                // Linked, but nothing will arrive until a hook exists. Say so.
+                toast(`Connected ${result.repo}, but the webhook was not set up: ${result.webhook}`, 'error')
+            }
             if (!connect) setRepo('')
         } catch (error) {
             console.error(error)
@@ -379,14 +407,35 @@ export function WorkspaceSettingsModal({
                                     <p className="text-xs font-semibold uppercase tracking-wider theme-text-muted">GitHub repository</p>
                                     <p className="mt-1 text-xs theme-text-muted">
                                         Pushes and pull requests here are matched against this workspace's tasks, and Stacky suggests status changes for you to approve.
+                                        {githubConnected === false && ' Connect GitHub in Settings to pick from a list and have the webhook set up for you.'}
                                     </p>
                                     <div className="mt-3 flex gap-2">
-                                        <input
-                                            value={repo}
-                                            onChange={(e) => setRepo(e.target.value)}
-                                            placeholder="owner/repository"
-                                            className="min-w-0 flex-1 rounded-xl theme-input px-3 py-2 text-sm"
-                                        />
+                                        {githubConnected === false ? (
+                                            <input
+                                                value={repo}
+                                                onChange={(e) => setRepo(e.target.value)}
+                                                placeholder="owner/repository"
+                                                className="min-w-0 flex-1 rounded-xl theme-input px-3 py-2 text-sm"
+                                            />
+                                        ) : (
+                                            <select
+                                                value={repo}
+                                                onChange={(e) => setRepo(e.target.value)}
+                                                disabled={reposLoading}
+                                                className="min-w-0 flex-1 select-input text-sm"
+                                            >
+                                                <option value="">
+                                                    {reposLoading ? 'Loading your repositories…' : 'Choose a repository'}
+                                                </option>
+                                                {repos.map((r) => (
+                                                    <option key={r.fullName} value={r.fullName}>
+                                                        {r.fullName}
+                                                        {r.private ? ' · private' : ''}
+                                                        {r.canAdmin ? '' : ' · no hook access'}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        )}
                                         <button
                                             type="button"
                                             disabled={linkingRepo || !repo.trim()}

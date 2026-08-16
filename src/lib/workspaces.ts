@@ -243,7 +243,30 @@ export async function linkRepo(workspaceId: string, repo: string, connect: boole
   })
   const payload = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(payload.error ?? 'Could not update the repository link.')
-  return payload as { repo: string; linked: boolean }
+  return payload as { repo: string; linked: boolean; webhook?: string }
+}
+
+export interface GithubRepo {
+  fullName: string
+  private: boolean
+  canAdmin: boolean
+  pushedAt: string | null
+}
+
+/** The repositories the signed-in person can connect, newest activity first. */
+export async function listGithubRepos(): Promise<{
+  connected: boolean
+  login?: string | null
+  repos: GithubRepo[]
+  error?: string
+}> {
+  const user = getAuth().currentUser
+  if (!user) return { connected: false, repos: [] }
+  const res = await fetch('/api/github-repos', {
+    headers: { Authorization: `Bearer ${await user.getIdToken()}` },
+  })
+  if (!res.ok) return { connected: false, repos: [] }
+  return res.json()
 }
 
 export async function getWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {

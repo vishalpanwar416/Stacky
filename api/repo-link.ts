@@ -20,6 +20,59 @@ if (!getApps().some((a) => a.name === 'repo-link')) {
 
 const docId = (repo: string) => repo.replace('/', '__')
 
+const WEBHOOK_URL = `${process.env.APP_URL ?? 'https://stackyy.vercel.app'}/api/github-webhook`
+
+/**
+ * Creates the delivery hook on the repository, if the stored GitHub token
+ * allows it. Best-effort and idempotent: an existing hook pointing at the same
+ * URL is left alone, and any failure is reported rather than thrown, so the
+ * link still succeeds and can be completed by hand.
+ */
+async function ensureWebhook(uid: string, repo: string): Promise<{ webhook: string }> {
+  const secret = process.env.GITHUB_WEBHOOK_SECRET
+  if (!secret) return { webhook: 'not configured on this deployment' }
+
+  const stored = await db.collection('githubTokens').doc(uid).get()
+  if (!stored.exists) return { webhook: 'no GitHub connection — add the webhook manually' }
+  const token = stored.data()!.accessToken
+
+  const gh = (path: string, init: RequestInit = {}) =>
+    fetch(`https://api.github.com/repos/${repo}${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+      },
+    })
+
+  try {
+    const existing = await gh('/hooks')
+    if (existing.ok) {
+      const hooks = (await existing.json()) as any[]
+      if (hooks.some((h) => h.config?.url === WEBHOOK_URL)) return { webhook: 'already registered' }
+    } else if (existing.status === 404 || existing.status === 403) {
+      return { webhook: 'no permission to manage hooks on that repository' }
+    }
+
+    const created = await gh('/hooks', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'web',
+        active: true,
+        events: ['push', 'pull_request'],
+        config: { url: WEBHOOK_URL, content_type: 'json', secret },
+      }),
+    })
+    if (created.ok) return { webhook: 'registered' }
+    const detail = (await created.json().catch(() => ({}))) as { message?: string }
+    return { webhook: detail.message ?? `GitHub returned ${created.status}` }
+  } catch (err) {
+    console.error('ensureWebhook failed', err)
+    return { webhook: 'could not reach GitHub' }
+  }
+}
+
 export default async function handler(req: any, res: any) {
   if (!['POST', 'DELETE'].includes(req.method)) {
     return res.status(405).json({ error: 'Use POST or DELETE.' })
@@ -73,7 +126,11 @@ export default async function handler(req: any, res: any) {
       linkedBy: uid,
       linkedAt: FieldValue.serverTimestamp(),
     })
-    return res.status(200).json({ ok: true, repo, linked: true })
+
+    // Register the webhook too, if we hold a token that can. Linking without it
+    // looks connected but delivers nothing, which is the worst of both.
+    const hook = await ensureWebhook(uid, repo)
+    return res.status(200).json({ ok: true, repo, linked: true, ...hook })
   } catch (err) {
     console.error('repo-link failed', err)
     return res.status(500).json({ error: 'Could not update the repository link.' })

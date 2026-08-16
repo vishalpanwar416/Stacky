@@ -199,13 +199,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * as "login is broken"; the GitHub credential is linked onto the existing
    * account instead, so one person keeps one identity and one set of workspaces.
    */
+  /**
+   * Firebase surfaces the provider's access token once, on the result of a
+   * sign-in or link, and never again. Hand it to the server there and then, or
+   * repository listing and webhook creation are impossible without sending the
+   * user back through OAuth.
+   */
+  const keepGithubToken = async (accessToken?: string) => {
+    if (!accessToken) return
+    try {
+      const idToken = await getAuth().currentUser?.getIdToken()
+      if (!idToken) return
+      await fetch('/api/github-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ accessToken }),
+      })
+    } catch (err) {
+      // Sign-in already succeeded; losing the token only costs the convenience.
+      console.error('Could not store the GitHub token:', err)
+    }
+  }
+
   const signInWithGithub = async () => {
     setAuthError(null)
     try {
       const authInstance = getAuth()
       const provider = new GithubAuthProvider()
       provider.addScope('user:email')
+      // `repo` is what allows listing your repositories and registering the
+      // webhook for you. It is broad — read/write across your repositories —
+      // so it is only requested, never assumed: without it the repository has
+      // to be typed in by hand and the hook created manually.
+      provider.addScope('repo')
       const result = await signInWithPopup(authInstance, provider)
+
+      await keepGithubToken(GithubAuthProvider.credentialFromResult(result)?.accessToken)
 
       if (!result.user.email) {
         await firebaseSignOut(authInstance)
@@ -315,7 +344,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const google = new GoogleAuthProvider()
     if (email) google.setCustomParameters({ login_hint: email })
     const existing = await signInWithPopup(getAuth(), google)
-    await linkWithCredential(existing.user, credential)
+    const linked = await linkWithCredential(existing.user, credential)
+    await keepGithubToken(GithubAuthProvider.credentialFromResult(linked)?.accessToken)
     setPendingGithubCred(null)
     setPendingLinkEmail(null)
     setAuthError(null)
