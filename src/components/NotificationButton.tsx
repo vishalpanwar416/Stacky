@@ -50,8 +50,11 @@ export function NotificationButton({ onClick, active }: NotificationButtonProps)
                 />
             </svg>
             {count > 0 && (
-                <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white ring-2 ring-(--color-bg)">
-                    {count}
+                <span
+                    className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold leading-none text-white ring-2 ring-(--color-bg)"
+                    aria-label={`${count} unread`}
+                >
+                    {count > 9 ? '9+' : count}
                 </span>
             )}
         </button>

@@ -2,6 +2,13 @@
 @import "tailwindcss";
 
 @theme {
+  /* bg-primary / text-primary are used across the app but nothing defined the
+     token, so Tailwind generated no utility for them and every "primary"
+     element rendered unstyled — most visibly the notification badge, which
+     appeared as a bare number on top of the bell. */
+  --color-primary: #f97316;
+  --color-primary-hover: #fb923c;
+
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --font-display: "Outfit", sans-serif;
 }
