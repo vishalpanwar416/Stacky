@@ -7,6 +7,14 @@ import { subscribeTasksByWorkspace, updateTask, toggleTaskTimer } from '../lib/t
 import { getCountdown as getTaskCountdown } from '../lib/taskUtils'
 import { deleteWorkspace, updateWorkspace } from '../lib/workspaces'
 import { getProjectsByWorkspace, createProject } from '../lib/projects'
+import {
+  fetchCalendarEvents,
+  groupEventsByDate,
+  getStoredCalendarToken,
+  clearCalendarToken,
+  CalendarAuthError,
+  type GCalEvent,
+} from '../lib/googleCalendar'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useTaskFlip } from '../hooks/useTaskFlip'
 import { ShortcutsModal } from '../components/ShortcutsModal'
@@ -103,7 +111,7 @@ function getGreeting(): string {
 
 export function Dashboard() {
   const navigate = useNavigate()
-  const { user, profile, connectGoogleCalendar } = useAuth()
+  const { user, profile, connectGoogleCalendar, calendarConnected, disconnectGoogleCalendar } = useAuth()
   const { toast: pushToast } = useToast()
   const { workspaces, currentWorkspace, setCurrentWorkspaceId, refreshWorkspaces, loading: wsLoading , canWrite } = useWorkspace()
   const maxInProgress = profile?.preferences?.maxInProgress ?? MAX_IN_PROGRESS
@@ -150,6 +158,11 @@ export function Dashboard() {
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [queueFilterDays, setQueueFilterDays] = useState(1)
 
+  // Google Calendar events state
+  const [gcalEvents, setGcalEvents] = useState<GCalEvent[]>([])
+  const [gcalLoading, setGcalLoading] = useState(false)
+  const [gcalError, setGcalError] = useState<string | null>(null)
+
   useEffect(() => {
     const t = setTimeout(() => setIntroShown(true), 2000)
     return () => clearTimeout(t)
@@ -166,6 +179,38 @@ export function Dashboard() {
       setCalendarOpen(false)
     }
   }, [completingTaskId, blockingTaskId, commandBarOpen, newProjectOpen, shortcutsOpen, headerOverlayOpen])
+
+  // Fetch Google Calendar events when the calendar is open
+  useEffect(() => {
+    if (!calendarOpen) return
+    const token = getStoredCalendarToken()
+    if (!token) {
+      setGcalEvents([])
+      return
+    }
+    let cancelled = false
+    setGcalLoading(true)
+    setGcalError(null)
+    fetchCalendarEvents(calendarMonth, token)
+      .then((events) => {
+        if (!cancelled) setGcalEvents(events)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        if (err instanceof CalendarAuthError) {
+          // Token expired — clear it and surface a reconnect prompt
+          clearCalendarToken()
+          setGcalError('Your Google Calendar session expired. Click the sync button to reconnect.')
+          setGcalEvents([])
+        } else {
+          setGcalError('Could not load Google Calendar events.')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setGcalLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [calendarOpen, calendarMonth])
 
   const toggleSidebar = () => {
     setSidebarCollapsed((c) => {
@@ -322,6 +367,8 @@ export function Dashboard() {
   }, new Map<string, Task[]>())
   const selectedDateKey = formatDateKey(selectedDate)
   const tasksOnSelectedDate = tasksByDate.get(selectedDateKey) ?? []
+  const gcalEventsByDate = groupEventsByDate(gcalEvents)
+  const gcalEventsOnSelectedDate = gcalEventsByDate.get(selectedDateKey) ?? []
 
   const handleSetWorkspaceId = (id: string | null) => {
     setCurrentWorkspaceId(id)
@@ -334,10 +381,19 @@ export function Dashboard() {
 
   const handleConnectCalendar = async () => {
     try {
-      const credential = await connectGoogleCalendar()
-      if (credential?.accessToken) {
-        localStorage.setItem('stacky_gcal_token', credential.accessToken)
-        pushToast('Connected! Tasks will now sync.', 'success')
+      await connectGoogleCalendar()
+      pushToast('Google Calendar connected!', 'success')
+      // Trigger a refetch if calendar is open
+      setGcalError(null)
+      if (calendarOpen) {
+        const token = getStoredCalendarToken()
+        if (token) {
+          setGcalLoading(true)
+          fetchCalendarEvents(calendarMonth, token)
+            .then(setGcalEvents)
+            .catch(() => setGcalError('Could not load Google Calendar events.'))
+            .finally(() => setGcalLoading(false))
+        }
       }
     } catch (err) {
       console.error(err)
@@ -608,14 +664,28 @@ export function Dashboard() {
                     </button>
                     <button
                       type="button"
-                      onClick={handleConnectCalendar}
-                      className="rounded-xl theme-surface-bg theme-border border p-2 sm:p-3.5 text-sm font-medium theme-text transition-all duration-200 theme-surface-hover-bg hover:scale-[1.05] active:scale-[0.98] flex items-center justify-center"
-                      title="Sync with Google Calendar"
+                      onClick={calendarConnected ? disconnectGoogleCalendar : handleConnectCalendar}
+                      className={`relative rounded-xl border p-2 sm:p-3.5 text-sm font-medium transition-all duration-200 hover:scale-[1.05] active:scale-[0.98] flex items-center justify-center ${
+                        calendarConnected
+                          ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500/20'
+                          : 'theme-surface-bg theme-border theme-text theme-surface-hover-bg'
+                      }`}
+                      title={calendarConnected ? 'Google Calendar connected · click to disconnect' : 'Connect Google Calendar'}
+                      aria-label={calendarConnected ? 'Disconnect Google Calendar' : 'Connect Google Calendar'}
                     >
-                      <svg className="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        <circle cx="12" cy="13" r="2" fill="currentColor" className="opacity-50" />
+                      {/* Google Calendar icon */}
+                      <svg className="h-5 w-5 sm:h-6 sm:w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
+                        <path d="M3.5 9.5h17" />
+                        <path d="M8.5 3.5v3" />
+                        <path d="M15.5 3.5v3" />
+                        {calendarConnected && (
+                          <circle cx="12" cy="14.5" r="2" fill="currentColor" stroke="none" />
+                        )}
                       </svg>
+                      {calendarConnected && (
+                        <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-[var(--color-bg)]" aria-hidden />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1163,6 +1233,16 @@ export function Dashboard() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                {/* Connection status badge */}
+                {calendarConnected && !gcalError && (
+                  <span className="hidden sm:flex items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-[11px] font-medium text-emerald-500">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Google Calendar
+                  </span>
+                )}
+                {gcalLoading && (
+                  <span className="text-xs theme-text-muted animate-pulse">Loading events…</span>
+                )}
                 <button
                   type="button"
                   onClick={() => setCalendarOpen(false)}
@@ -1173,6 +1253,34 @@ export function Dashboard() {
                 </button>
               </div>
             </div>
+
+            {/* GCal error / reconnect prompt */}
+            {gcalError && (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-2.5">
+                <p className="text-xs text-amber-400">{gcalError}</p>
+                <button
+                  type="button"
+                  onClick={handleConnectCalendar}
+                  className="shrink-0 rounded-lg bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-400 hover:bg-amber-500/30 transition-colors"
+                >
+                  Reconnect
+                </button>
+              </div>
+            )}
+
+            {/* Connect prompt if not connected */}
+            {!calendarConnected && !gcalError && (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl theme-surface-bg border theme-border px-4 py-2.5">
+                <p className="text-xs theme-text-muted">Connect Google Calendar to see your events here.</p>
+                <button
+                  type="button"
+                  onClick={handleConnectCalendar}
+                  className="shrink-0 rounded-lg px-3 py-1 text-xs font-medium theme-text border theme-border hover:theme-surface-hover-bg transition-colors"
+                >
+                  Connect
+                </button>
+              </div>
+            )}
 
             <div className="mt-4 flex flex-col gap-4 lg:flex-row">
               <div className="lg:w-2/3">
@@ -1207,7 +1315,7 @@ export function Dashboard() {
                     </button>
                   </div>
                   <p className="text-sm theme-text-muted">
-                    Showing tasks for {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                   </p>
                 </div>
 
@@ -1223,6 +1331,7 @@ export function Dashboard() {
                     const isSelected = isSameDay(day, selectedDate)
                     const key = formatDateKey(day)
                     const hasTasks = tasksByDate.has(key)
+                    const hasGcal = gcalEventsByDate.has(key)
                     return (
                       <button
                         key={`${key}-${day.getMonth()}`}
@@ -1237,12 +1346,42 @@ export function Dashboard() {
                           } ${!isCurrentMonth ? 'opacity-60' : ''}`}
                       >
                         {day.getDate()}
-                        {hasTasks && (
-                          <span className="absolute bottom-1 left-1.5 h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" aria-hidden />
+                        {/* Dots row: task dot (accent) + gcal dot (blue) */}
+                        {(hasTasks || hasGcal) && (
+                          <span className="absolute bottom-1 left-0 right-0 flex items-center justify-center gap-0.5">
+                            {hasTasks && (
+                              <span
+                                className="h-1.5 w-1.5 rounded-full"
+                                style={{ background: isSelected ? 'rgba(0,0,0,0.5)' : 'var(--color-accent)' }}
+                                aria-hidden
+                              />
+                            )}
+                            {hasGcal && (
+                              <span
+                                className="h-1.5 w-1.5 rounded-full bg-blue-400"
+                                style={{ opacity: isSelected ? 0.7 : 1 }}
+                                aria-hidden
+                              />
+                            )}
+                          </span>
                         )}
                       </button>
                     )
                   })}
+                </div>
+
+                {/* Legend */}
+                <div className="mt-3 flex items-center gap-4 text-[11px] theme-text-muted">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full bg-[var(--color-accent)]" />
+                    Stacky tasks
+                  </span>
+                  {calendarConnected && (
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-blue-400" />
+                      Google Calendar
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -1267,27 +1406,70 @@ export function Dashboard() {
                     </button>
                   )}
                 </div>
-                {tasksOnSelectedDate.length === 0 && (
-                  <p className="text-sm theme-text-muted">No tasks scheduled.</p>
-                )}
+
+                {/* Stacky tasks */}
                 {tasksOnSelectedDate.length > 0 && (
-                  <ul className="space-y-2 max-h-64 overflow-auto pr-1">
-                    {tasksOnSelectedDate.map((t) => (
-                      <li key={t.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1 theme-surface-hover-bg">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCalendarOpen(false)
-                            navigate(`/tasks/${t.id}`)
-                          }}
-                          className="text-sm theme-text text-left truncate hover:underline"
-                        >
-                          {t.title}
-                        </button>
-                        <span className="text-[11px] uppercase tracking-wide theme-text-muted">{t.priority}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest theme-text-faint mb-1.5 flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
+                      Tasks
+                    </p>
+                    <ul className="space-y-1.5 max-h-32 overflow-auto pr-1">
+                      {tasksOnSelectedDate.map((t) => (
+                        <li key={t.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1 theme-surface-hover-bg">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCalendarOpen(false)
+                              navigate(`/tasks/${t.id}`)
+                            }}
+                            className="text-sm theme-text text-left truncate hover:underline"
+                          >
+                            {t.title}
+                          </button>
+                          <span className="text-[11px] uppercase tracking-wide theme-text-muted shrink-0">{t.priority}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Google Calendar events */}
+                {gcalEventsOnSelectedDate.length > 0 && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest theme-text-faint mb-1.5 flex items-center gap-1.5">
+                      <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+                      Google Calendar
+                    </p>
+                    <ul className="space-y-1.5 max-h-40 overflow-auto pr-1">
+                      {gcalEventsOnSelectedDate.map((ev) => {
+                        const timeLabel = ev.allDay
+                          ? 'All day'
+                          : new Date(ev.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                        return (
+                          <li key={ev.id} className="flex items-start justify-between gap-2 rounded-lg px-2 py-1.5 bg-blue-500/5 border border-blue-500/10">
+                            <div className="min-w-0">
+                              <a
+                                href={ev.htmlLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm text-blue-400 hover:underline truncate block"
+                                title={ev.summary}
+                              >
+                                {ev.summary}
+                              </a>
+                              <p className="text-[11px] text-blue-400/60 mt-0.5">{timeLabel}</p>
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Empty state */}
+                {tasksOnSelectedDate.length === 0 && gcalEventsOnSelectedDate.length === 0 && (
+                  <p className="text-sm theme-text-muted">Nothing scheduled.</p>
                 )}
               </div>
             </div>
