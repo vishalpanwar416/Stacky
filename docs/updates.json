@@ -1,30 +1,37 @@
 [
     {
-        "date": "2025-02-12",
-        "version": "1.2.0",
+        "date": "2026-08-16",
+        "version": "2.3.0",
         "type": "feature",
-        "title": "Task Portability",
-        "description": "Now you can move tasks between different projects and workspaces directly from the task detail page."
+        "title": "Workspace roles",
+        "description": "Share a workspace as owner, member or read-only. Read-only is enforced in the Firestore rules — not just hidden in the UI — and owners can change any member's role from workspace settings."
     },
     {
-        "date": "2025-02-12",
-        "version": "1.1.0",
-        "type": "feature",
-        "title": "Documentation & Updates Center",
-        "description": "Added a new documentation folder and a dynamic updates section on the login page to keep users informed about the latest changes."
-    },
-    {
-        "date": "2025-01-11",
-        "version": "1.0.5",
+        "date": "2026-08-16",
+        "version": "2.2.1",
         "type": "bugfix",
-        "title": "Invitation Logic Fixes",
-        "description": "Resolved issues with workspace invitations and implemented real-time notifications."
+        "title": "Invitations can be accepted",
+        "description": "Accepting an invitation had never completed: joining needs a write only the workspace owner is allowed to make, so every acceptance failed halfway and left the invitee listed but locked out. Acceptance now runs server-side in a single atomic step, and existing half-applied invitations repair themselves."
     },
     {
-        "date": "2025-01-10",
-        "version": "1.0.4",
+        "date": "2026-08-15",
+        "version": "2.2.0",
         "type": "feature",
-        "title": "GCP Project Integration",
-        "description": "Improved connectivity with GCP projects for smoother development workflows."
+        "title": "Connect Claude over MCP",
+        "description": "Stacky now runs a hosted MCP server, so you can create, update, comment on and close tasks straight from Claude Code or Claude Desktop. Generate a token in the app; it is scoped to your account and revocable at any time."
+    },
+    {
+        "date": "2026-08-15",
+        "version": "2.1.0",
+        "type": "feature",
+        "title": "An Overview that explains itself",
+        "description": "The dashboard is now the home page and writes a plain-language reading of your workload — what is stalling, what changed since last time — refreshing on a timer with past readings you can page back through."
+    },
+    {
+        "date": "2026-08-14",
+        "version": "2.0.0",
+        "type": "feature",
+        "title": "AI focus and prioritisation",
+        "description": "Stacky reads your open work and names the one task to start next, with reasons. It proposes priority changes and applies them only once you agree, with an auto-apply toggle when you would rather it just decide."
     }
 ]

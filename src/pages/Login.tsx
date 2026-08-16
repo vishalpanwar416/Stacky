@@ -5,33 +5,39 @@ import { Skeleton } from '../components/Skeleton'
 
 const features = [
   {
-    title: 'Morning — set the scene',
-    description: 'You open Stacky, see today’s plan on a calm dark canvas, and drop fresh ideas into the queue with a quick shortcut.',
-    icon: 'keyboard',
+    title: 'Run it from Claude',
+    description:
+      'Connect Stacky to Claude over MCP and file, update and close tasks while you work — no tab switching. Bring your own client; the endpoint is hosted and token-scoped to you.',
+    icon: 'plug',
   },
   {
-    title: 'Afternoon — stay in flow',
-    description: 'A tiny in‑progress limit keeps you focused while the calendar view shows what’s due next. Timers quietly track the real story of your work.',
-    icon: 'calendar',
+    title: 'Ask what to do next',
+    description:
+      'AI reads your open work and names the one thing to start, with reasons. It proposes priority changes and waits for your yes — nothing is reordered behind your back.',
+    icon: 'sparkles',
   },
   {
-    title: 'Evening — share the win',
-    description: 'Mark tasks done, add a note, and let the workspace history tell the team what shipped today.',
-    icon: 'people',
+    title: 'A dashboard that reads itself',
+    description:
+      'The Overview writes a plain-language summary of where the work stands, refreshes on its own, and keeps past readings so you can page back and see what changed.',
+    icon: 'list',
   },
   {
-    title: 'Calendar, not chaos',
-    description: 'Sync Google Calendar and schedule tasks by day so your work and events live on one timeline.',
+    title: 'Queue in, focus, ship',
+    description:
+      'Pull one task into progress at a time, let the timer run, and move it back if plans change. A small in-progress limit is the point, not a limitation.',
     icon: 'flag',
   },
   {
-    title: 'Offline still counts',
-    description: 'Keep working on the plane or with spotty Wi‑Fi—your updates sync the moment you’re back.',
-    icon: 'cloud',
+    title: 'Invite people, choose the reach',
+    description:
+      'Share a workspace as owner, member or read-only. Read-only really is read-only — it is enforced in the database rules, not hidden in the interface.',
+    icon: 'people',
   },
   {
-    title: 'Privacy-first by default',
-    description: 'Firebase Auth + Firestore rules keep data locked down; nothing is shared unless you invite it.',
+    title: 'Your data stays yours',
+    description:
+      'Google sign-in, and Firestore rules that scope every task, project and comment to the workspace it belongs to. Access is tested against the deployed rules, not assumed.',
     icon: 'shield',
   },
 ]
@@ -87,6 +93,18 @@ function FeatureIcon({ name }: { name: string }) {
           <circle cx="17" cy="14" r="1" />
         </svg>
       )
+    case 'plug':
+      return (
+        <svg className="h-5 w-5 shrink-0 opacity-90" style={style} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 010 5.656l-3 3a4 4 0 01-5.656-5.656l1.5-1.5M10.172 13.828a4 4 0 010-5.656l3-3a4 4 0 015.656 5.656l-1.5 1.5" />
+        </svg>
+      )
+    case 'sparkles':
+      return (
+        <svg className="h-5 w-5 shrink-0 opacity-90" style={style} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+        </svg>
+      )
     case 'cloud':
       return (
         <svg className="h-5 w-5 shrink-0 opacity-90" style={style} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
@@ -128,7 +146,7 @@ export function Login() {
   }
 
   return (
-    <div className="theme-page force-dark flex min-h-screen flex-col relative overflow-hidden" style={{ backgroundColor: 'var(--color-bg)' }}>
+    <div className="theme-page force-dark flex min-h-screen flex-col relative overflow-x-hidden" style={{ backgroundColor: 'var(--color-bg)' }}>
       {/* Background */}
       <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none" aria-hidden>
         <div
@@ -157,7 +175,7 @@ export function Login() {
         />
       </div>
 
-      <main className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_1.1fr] lg:gap-12 xl:gap-14 items-center justify-center w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 lg:py-12 lg:min-h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] overflow-auto lg:overflow-visible">
+      <main className="flex-1 flex flex-col lg:grid lg:grid-cols-[1fr_1.1fr] lg:gap-12 xl:gap-14 items-center justify-center w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8 lg:py-12 lg:min-h-[calc(100vh-4rem)]">
         {/* Hero + CTA (left on lg) */}
         <div className="flex flex-col items-center lg:items-start text-center lg:text-left w-full max-w-xl mx-auto lg:mx-0 animate-stagger">
           <div
@@ -180,11 +198,11 @@ export function Login() {
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1 text-xs font-medium bg-emerald-500/10 border-emerald-500/20 text-emerald-400">
               <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" aria-hidden />
-              New: Google Calendar Sync
+              New: Roles &amp; Claude/MCP access
             </span>
           </div>
           <p className="mx-auto lg:mx-0 mt-4 max-w-md text-base sm:text-lg theme-page-muted">
-            Imagine your day as a simple arc: you set the scene, stay in flow, and close the loop. Stacky keeps that story intact—across workspaces, projects, and the calendar—without pulling you out of momentum.
+            A task tracker your AI can actually use. Plan in workspaces and projects, pull one thing into focus at a time, and let Claude file and close work over MCP while you build — with an Overview that tells you where things stand in plain language.
           </p>
           <div className="mt-6 sm:mt-8 flex flex-col items-center lg:items-start w-full gap-3">
             {authError && (
@@ -240,7 +258,7 @@ export function Login() {
         </div>
 
         {/* Feature cards (right on lg) */}
-        <section className="w-full mt-8 lg:mt-0 max-h-[60vh] overflow-auto lg:overflow-visible pr-1 flex flex-col gap-8">
+        <section className="w-full mt-8 lg:mt-0 flex flex-col gap-8">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wider theme-page-muted mb-5 text-center lg:text-left animate-fade-in">
               How it helps you
@@ -304,7 +322,7 @@ export function Login() {
       <footer className="border-t py-3 sm:py-4" style={{ borderColor: 'var(--color-border)' }}>
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-2">
           <p className="text-xs theme-page-muted text-center sm:text-left">
-            Open source · React 19 · TypeScript · Vite · Tailwind CSS 4 · Firebase Auth & Firestore
+            Open source · React 19 · TypeScript · Vite · Tailwind CSS 4 · Firebase Auth & Firestore · MCP
           </p>
           <div className="flex gap-4">
             <a href="/docs/CHANGELOG.md" className="text-xs theme-page-muted hover:text-(--color-accent) transition-colors">Changelog</a>
