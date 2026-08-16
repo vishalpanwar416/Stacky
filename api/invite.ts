@@ -120,6 +120,8 @@ export default async function handler(req: any, res: any) {
     const mail = invitationEmail({
       workspaceName: ws.name ?? 'a workspace',
       inviterName,
+      inviterEmail: caller.email ?? null,
+      role: 'member',
       appUrl,
     })
     const sent = await sendEmail({
