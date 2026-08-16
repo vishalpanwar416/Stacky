@@ -11,7 +11,7 @@ import { useToast } from '../contexts/ToastContext'
 import { useWorkspace } from '../contexts/WorkspaceContext'
 import { getDb } from '../lib/firebase'
 import { updateUserPreferences } from '../lib/users'
-import { acceptInvitation, declineInvitation, subscribeUserInvitations } from '../lib/workspaces'
+import { acceptInvitation, declineInvitation, leaveWorkspace, subscribeUserInvitations } from '../lib/workspaces'
 import type { WorkspaceRole } from '../types'
 
 /**
@@ -93,6 +93,7 @@ export function Settings() {
   const [invitations, setInvitations] = useState<any[]>([])
   const [roles, setRoles] = useState<Record<string, WorkspaceRole>>({})
   const [busyInvite, setBusyInvite] = useState<string | null>(null)
+  const [leaving, setLeaving] = useState<string | null>(null)
 
   // Preferences are written straight through; the value shown is whatever the
   // profile currently holds, so a failed write cannot leave the UI lying.
@@ -136,6 +137,25 @@ export function Settings() {
     } catch (err) {
       console.error(err)
       toast(`Could not save ${label.toLowerCase()}`, 'error')
+    }
+  }
+
+  const leave = async (workspaceId: string, name: string) => {
+    if (!window.confirm(`Leave ${name}? You lose access immediately and are unassigned from its tasks. You would need a new invitation to return.`)) return
+    setLeaving(workspaceId)
+    try {
+      const result = await leaveWorkspace(workspaceId)
+      toast(
+        result.unassignedTasks > 0
+          ? `Left ${name} — unassigned from ${result.unassignedTasks} task${result.unassignedTasks === 1 ? '' : 's'}`
+          : `Left ${name}`,
+        'success'
+      )
+    } catch (err) {
+      console.error(err)
+      toast(err instanceof Error ? err.message : 'Could not leave', 'error')
+    } finally {
+      setLeaving(null)
     }
   }
 
@@ -271,17 +291,31 @@ export function Settings() {
                   const role: WorkspaceRole = w.ownerId === user?.uid ? 'owner' : roles[w.id] ?? 'member'
                   return (
                     <Row key={w.id} label={w.name} hint={w.description || undefined}>
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-tight ${
-                          role === 'owner'
-                            ? 'border border-amber-500/20 bg-amber-500/10 text-amber-500'
-                            : role === 'readonly'
-                              ? 'border theme-border theme-text-faint'
-                              : 'border theme-border theme-text-muted'
-                        }`}
-                      >
-                        {ROLE_LABEL[role]}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-tight ${
+                            role === 'owner'
+                              ? 'border border-amber-500/20 bg-amber-500/10 text-amber-500'
+                              : role === 'readonly'
+                                ? 'border theme-border theme-text-faint'
+                                : 'border theme-border theme-text-muted'
+                          }`}
+                        >
+                          {ROLE_LABEL[role]}
+                        </span>
+                        {/* Owners cannot leave their own workspace — there would
+                            be nobody left to administer it. They delete it. */}
+                        {role !== 'owner' && (
+                          <button
+                            type="button"
+                            disabled={leaving === w.id}
+                            onClick={() => leave(w.id, w.name)}
+                            className="rounded-lg px-2.5 py-1 text-xs font-medium theme-text-muted transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                          >
+                            {leaving === w.id ? 'Leaving…' : 'Leave'}
+                          </button>
+                        )}
+                      </div>
                     </Row>
                   )
                 })}

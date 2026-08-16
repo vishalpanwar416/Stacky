@@ -195,6 +195,37 @@ export async function updateMemberRole(
   })
 }
 
+/**
+ * Removes someone from a workspace, or removes yourself.
+ *
+ * Server-side: membership lives in `memberIds`, which only the owner may write,
+ * so a member has no way to leave from the client. The server also unassigns
+ * the person from that workspace's tasks — an assignee keeps access to their
+ * task regardless of membership, so removal without it would be cosmetic.
+ */
+export async function removeMember(
+  workspaceId: string,
+  userId?: string
+): Promise<{ workspaceName: string | null; unassignedTasks: number }> {
+  const user = getAuth().currentUser
+  if (!user) throw new Error('Sign in first.')
+
+  const res = await fetch('/api/remove-member', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${await user.getIdToken()}`,
+    },
+    body: JSON.stringify({ workspaceId, userId: userId ?? user.uid }),
+  })
+  const payload = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(payload.error ?? 'Could not complete the removal.')
+  return payload
+}
+
+/** Leaving is removing yourself. */
+export const leaveWorkspace = (workspaceId: string) => removeMember(workspaceId)
+
 export async function getWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {
   const snap = await getDocs(collection(getDb(), WORKSPACES, workspaceId, MEMBERS))
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkspaceMember))

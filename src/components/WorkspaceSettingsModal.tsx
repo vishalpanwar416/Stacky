@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getWorkspaceMembers, createInvitation, updateMemberRole } from '../lib/workspaces'
+import { getWorkspaceMembers, createInvitation, updateMemberRole, removeMember } from '../lib/workspaces'
 import { searchUsers } from '../lib/users'
 import type { Workspace, WorkspaceMember, UserProfile, WorkspaceRole } from '../types'
 
@@ -105,6 +105,27 @@ export function WorkspaceSettingsModal({
         } catch (error) {
             console.error(error)
             toast('Failed to update role', 'error')
+        } finally {
+            setSavingRole(null)
+        }
+    }
+
+    const handleRemove = async (member: WorkspaceMember) => {
+        const who = displayFor(member).name ?? displayFor(member).email ?? 'this person'
+        if (!window.confirm(`Remove ${who} from ${workspace.name}? They lose access immediately and are unassigned from its tasks.`)) return
+        setSavingRole(member.userId)
+        try {
+            const result = await removeMember(workspace.id, member.userId)
+            setMembers((prev) => prev.filter((m) => m.userId !== member.userId))
+            toast(
+                result.unassignedTasks > 0
+                    ? `${who} removed — unassigned from ${result.unassignedTasks} task${result.unassignedTasks === 1 ? '' : 's'}`
+                    : `${who} removed`,
+                'success'
+            )
+        } catch (error) {
+            console.error(error)
+            toast(error instanceof Error ? error.message : 'Could not remove them', 'error')
         } finally {
             setSavingRole(null)
         }
@@ -371,6 +392,7 @@ export function WorkspaceSettingsModal({
                                                         </div>
                                                     </div>
                                                 </div>
+                                                <div className="flex items-center gap-2">
                                                 {roleOf(member) === 'owner' || !isOwner ? (
                                                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-tight ${roleOf(member) === 'owner'
                                                         ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
@@ -392,6 +414,21 @@ export function WorkspaceSettingsModal({
                                                         <option value="readonly">Read only</option>
                                                     </select>
                                                 )}
+                                                {isOwner && roleOf(member) !== 'owner' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemove(member)}
+                                                        disabled={savingRole === member.userId}
+                                                        className="rounded-lg p-1.5 theme-text-faint transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+                                                        title="Remove from workspace"
+                                                        aria-label={`Remove ${displayFor(member).name ?? displayFor(member).email ?? 'member'}`}
+                                                    >
+                                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                                        </svg>
+                                                    </button>
+                                                )}
+                                                </div>
                                             </div>
                                         ))}
 

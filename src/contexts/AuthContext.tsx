@@ -16,6 +16,7 @@ import {
 } from 'firebase/auth'
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
 import { auth, getAuth, getDb } from '../lib/firebase'
+import { storeCalendarToken, clearCalendarToken, getStoredCalendarToken } from '../lib/googleCalendar'
 import type { UserProfile } from '../types'
 
 interface AuthContextValue {
@@ -28,6 +29,8 @@ interface AuthContextValue {
   authError: string | null
   clearAuthError: () => void
   connectGoogleCalendar: () => Promise<any>
+  disconnectGoogleCalendar: () => void
+  calendarConnected: boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -37,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [authError, setAuthError] = useState<string | null>(null)
+  const [calendarConnected, setCalendarConnected] = useState(() => !!getStoredCalendarToken())
 
   useEffect(() => {
     if (!auth) {
@@ -177,13 +181,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const authInstance = getAuth()
       const provider = new GoogleAuthProvider()
       provider.addScope('https://www.googleapis.com/auth/calendar.events')
+      provider.addScope('https://www.googleapis.com/auth/calendar.readonly')
       const result = await signInWithPopup(authInstance, provider)
       const credential = GoogleAuthProvider.credentialFromResult(result)
+      if (credential?.accessToken) {
+        storeCalendarToken(credential.accessToken)
+        setCalendarConnected(true)
+      }
       return credential
     } catch (err: unknown) {
       console.error('Calendar connect error:', err)
       throw err
     }
+  }
+
+  const disconnectGoogleCalendar = () => {
+    clearCalendarToken()
+    setCalendarConnected(false)
   }
 
   const clearAuthError = () => setAuthError(null)
@@ -205,6 +219,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         authError,
         clearAuthError,
         connectGoogleCalendar,
+        disconnectGoogleCalendar,
+        calendarConnected,
       }}
     >
       {children}
