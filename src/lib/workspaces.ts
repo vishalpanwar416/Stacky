@@ -241,9 +241,33 @@ export async function linkRepo(workspaceId: string, repo: string, connect: boole
     },
     body: JSON.stringify({ workspaceId, repo }),
   })
+  if (!res.headers.get('content-type')?.includes('application/json')) {
+    throw new Error('API routes are not running. Start the dev server with npm run dev.')
+  }
   const payload = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(payload.error ?? 'Could not update the repository link.')
   return payload as { repo: string; linked: boolean; webhook?: string }
+}
+
+/**
+ * Turns whatever someone pasted into `owner/repo`.
+ *
+ * A browser URL is the natural thing to copy, so accept it — including .git
+ * suffixes, trailing slashes and deep links to a file. A profile URL has only
+ * one path segment and is rejected by name, because "invalid" would not explain
+ * what was wrong with it.
+ */
+export function normaliseRepo(input: string): { repo: string } | { error: string } {
+  let value = input.trim().replace(/^git@github\.com:/, '').replace(/\.git$/, '')
+  value = value.replace(/^https?:\/\//, '').replace(/^(www\.)?github\.com\//, '')
+  const parts = value.split('/').filter(Boolean)
+  if (parts.length === 1) {
+    return { error: `"${parts[0]}" looks like a GitHub account, not a repository. Use owner/repository.` }
+  }
+  if (parts.length < 2) return { error: 'Use the owner/repository form, for example vishalpanwar416/Stacky.' }
+  const repo = `${parts[0]}/${parts[1]}`
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) return { error: 'That does not look like a repository name.' }
+  return { repo }
 }
 
 export interface GithubRepo {
@@ -265,6 +289,11 @@ export async function listGithubRepos(): Promise<{
   const res = await fetch('/api/github-repos', {
     headers: { Authorization: `Bearer ${await user.getIdToken()}` },
   })
+  if (!res.headers.get('content-type')?.includes('application/json')) {
+    // Vite's SPA fallback answers unknown paths with 200 and index.html, so a
+    // dev server that does not run the functions looks like a success here.
+    return { connected: false, repos: [], error: 'API routes are not running. Start the dev server with npm run dev.' }
+  }
   if (!res.ok) return { connected: false, repos: [] }
   return res.json()
 }

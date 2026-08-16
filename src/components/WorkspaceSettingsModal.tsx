@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getWorkspaceMembers, createInvitation, updateMemberRole, removeMember, linkRepo, listGithubRepos, type GithubRepo } from '../lib/workspaces'
+import { getWorkspaceMembers, createInvitation, updateMemberRole, removeMember, linkRepo, listGithubRepos, normaliseRepo, type GithubRepo } from '../lib/workspaces'
 import { searchUsers } from '../lib/users'
 import type { Workspace, WorkspaceMember, UserProfile, WorkspaceRole } from '../types'
 
@@ -91,6 +91,7 @@ export function WorkspaceSettingsModal({
     const [repos, setRepos] = useState<GithubRepo[]>([])
     const [reposLoading, setReposLoading] = useState(false)
     const [githubConnected, setGithubConnected] = useState<boolean | null>(null)
+    const [reposError, setReposError] = useState<string | null>(null)
 
     // Only ask GitHub when the tab that shows the chooser is actually open.
     useEffect(() => {
@@ -102,6 +103,7 @@ export function WorkspaceSettingsModal({
                 if (cancelled) return
                 setGithubConnected(r.connected)
                 setRepos(r.repos)
+                setReposError((r as { error?: string }).error ?? null)
             })
             .catch(() => !cancelled && setGithubConnected(false))
             .finally(() => !cancelled && setReposLoading(false))
@@ -111,9 +113,15 @@ export function WorkspaceSettingsModal({
     }, [isOpen, activeTab])
 
     const handleLinkRepo = async (connect: boolean) => {
+        // Accept a pasted URL, and say what is wrong with a profile link.
+        const parsed = normaliseRepo(repo)
+        if ('error' in parsed) {
+            toast(parsed.error, 'error')
+            return
+        }
         setLinkingRepo(true)
         try {
-            const result = await linkRepo(workspace.id, repo.trim(), connect)
+            const result = await linkRepo(workspace.id, parsed.repo, connect)
             if (!connect) {
                 toast('Repository disconnected', 'success')
             } else if (result.webhook === 'registered' || result.webhook === 'already registered') {
@@ -407,8 +415,13 @@ export function WorkspaceSettingsModal({
                                     <p className="text-xs font-semibold uppercase tracking-wider theme-text-muted">GitHub repository</p>
                                     <p className="mt-1 text-xs theme-text-muted">
                                         Pushes and pull requests here are matched against this workspace's tasks, and Stacky suggests status changes for you to approve.
-                                        {githubConnected === false && ' Connect GitHub in Settings to pick from a list and have the webhook set up for you.'}
+                                        {githubConnected === false && !reposError && ' Connect GitHub in Settings to pick from a list and have the webhook set up for you.'}
                                     </p>
+                                    {reposError && (
+                                        <p className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-200">
+                                            {reposError}
+                                        </p>
+                                    )}
                                     <div className="mt-3 flex gap-2">
                                         {githubConnected === false ? (
                                             <input
