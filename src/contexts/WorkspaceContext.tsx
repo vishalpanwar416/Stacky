@@ -43,13 +43,23 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const unsubscribe = subscribeWorkspaces(user.uid, (list) => {
       setWorkspaces(list)
       setLoading(false)
-      if (currentWorkspaceId && !list.some((w) => w.id === currentWorkspaceId)) {
-        setCurrentWorkspaceIdState(list[0]?.id ?? null)
-      }
     })
 
     return () => unsubscribe()
-  }, [user, currentWorkspaceId])
+    // Deliberately not keyed on currentWorkspaceId: selecting a workspace must
+    // not tear down and rebuild the subscription. It used to, and the rebuilt
+    // listener's first emission raced the fallback below — picking a workspace
+    // you belong to but do not own immediately snapped back to an owned one.
+  }, [user])
+
+  // If the selected workspace is gone — deleted, or access removed — fall back.
+  // Keyed on the settled list rather than on the act of selecting.
+  useEffect(() => {
+    if (loading) return
+    if (currentWorkspaceId && !workspaces.some((w) => w.id === currentWorkspaceId)) {
+      setCurrentWorkspaceIdState(workspaces[0]?.id ?? null)
+    }
+  }, [workspaces, currentWorkspaceId, loading])
 
   const refreshWorkspaces = useCallback(async () => {
     if (!user) return

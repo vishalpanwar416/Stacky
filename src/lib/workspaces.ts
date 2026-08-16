@@ -109,8 +109,15 @@ export function subscribeWorkspaces(userId: string, callback: (workspaces: Works
 
   let ownedList: Workspace[] = []
   let memberList: Workspace[] = []
+  // Two independent listeners feed one merged list. Emitting after the first
+  // one resolves publishes a list that is missing every workspace the other
+  // query would have supplied — for a user whose workspaces come from
+  // membership rather than ownership, that is all of them. Wait for both.
+  let ownedReady = false
+  let memberReady = false
 
   const update = () => {
+    if (!ownedReady || !memberReady) return
     const map = new Map<string, Workspace>()
     ownedList.forEach((w) => map.set(w.id, w))
     memberList.forEach((w) => map.set(w.id, w))
@@ -126,20 +133,23 @@ export function subscribeWorkspaces(userId: string, callback: (workspaces: Works
 
   const unsubOwned = onSnapshot(ownedQ, (snap) => {
     ownedList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Workspace))
+    ownedReady = true
     update()
   }, (err) => {
     console.error('Owned workspaces subscription error:', err)
-    // Create new array to avoid reference issues if needed, but simple assignment is fine
     ownedList = []
+    ownedReady = true
     update()
   })
 
   const unsubMember = onSnapshot(memberQ, (snap) => {
     memberList = snap.docs.map(d => ({ id: d.id, ...d.data() } as Workspace))
+    memberReady = true
     update()
   }, (err) => {
     console.error('Member workspaces subscription error:', err)
     memberList = []
+    memberReady = true
     update()
   })
 
