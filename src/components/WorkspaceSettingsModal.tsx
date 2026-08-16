@@ -137,7 +137,7 @@ export function WorkspaceSettingsModal({
 
         setInviting(true)
         try {
-            await createInvitation(workspace.id, email, user.uid)
+            await createInvitation(workspace.id, email, user.uid, profile?.displayName ?? undefined)
             toast(`Invitation sent to ${email}`, 'success')
             setInviteEmail('')
             setShowResults(false)

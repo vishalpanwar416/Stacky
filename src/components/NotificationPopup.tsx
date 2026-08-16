@@ -116,7 +116,7 @@ export function NotificationPopup({ onClose }: NotificationPopupProps) {
                                     {invitations.map(invite => (
                                         <div key={invite.id} className="p-3 rounded-xl bg-white/5 border theme-border">
                                             <p className="text-xs theme-text mb-3">
-                                                <span className="font-semibold">{invite.invitedBy}</span> invited you to join a workspace.
+                                                <span className="font-semibold">{invite.invitedByName || 'Someone'}</span> invited you to join {invite.workspaceName ? <span className="font-semibold">{invite.workspaceName}</span> : 'a workspace'}.
                                             </p>
                                             <div className="flex gap-2">
                                                 <button

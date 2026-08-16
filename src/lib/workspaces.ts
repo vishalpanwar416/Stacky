@@ -11,10 +11,9 @@ import {
   serverTimestamp,
   writeBatch,
   onSnapshot,
-  arrayUnion,
 } from 'firebase/firestore'
 import type { Unsubscribe } from 'firebase/firestore'
-import { getDb } from './firebase'
+import { getAuth, getDb } from './firebase'
 import { getUserByEmail } from './users'
 import { createNotification } from './notifications'
 import type { Workspace, WorkspaceMember } from '../types'
@@ -191,7 +190,12 @@ export async function inviteMember(
 
 const INVITATIONS = 'invitations'
 
-export async function createInvitation(workspaceId: string, email: string, invitedBy: string) {
+export async function createInvitation(
+  workspaceId: string,
+  email: string,
+  invitedBy: string,
+  invitedByName?: string
+) {
   const normalizedEmail = email.toLowerCase().trim()
   const invitationsRef = collection(getDb(), INVITATIONS)
 
@@ -206,12 +210,20 @@ export async function createInvitation(workspaceId: string, email: string, invit
     throw new Error('Invitation already pending for this email')
   }
 
+  // The notification shows who invited you and to what. Reading that from the
+  // users and workspaces collections at display time would mean the invitee
+  // needs read access to both — which they do not have, and should not. Store
+  // it on the invitation, which is addressed to them.
+  const ws = await getWorkspace(workspaceId)
+
   await addDoc(invitationsRef, {
     workspaceId,
+    workspaceName: ws?.name ?? null,
     invitedEmail: normalizedEmail,
     status: 'pending',
     role: 'member',
     invitedBy,
+    invitedByName: invitedByName ?? null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
@@ -219,7 +231,6 @@ export async function createInvitation(workspaceId: string, email: string, invit
   // Try to notify the user if they already exist
   const existingUser = await getUserByEmail(normalizedEmail)
   if (existingUser) {
-    const ws = await getWorkspace(workspaceId)
     await createNotification({
       userId: existingUser.id,
       type: 'invitation',
@@ -275,41 +286,25 @@ export async function getUserInvitations(email: string): Promise<any[]> {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }))
 }
 
-export async function acceptInvitation(invitationId: string, userId: string, displayName?: string) {
-  const invRef = doc(getDb(), INVITATIONS, invitationId)
-  const invSnap = await getDoc(invRef)
-  if (!invSnap.exists()) throw new Error('Invitation not found')
+export async function acceptInvitation(invitationId: string, _userId?: string, _displayName?: string) {
+  // Joining requires writing the workspace's memberIds, which only its owner
+  // may do — and must stay that way, or anyone could add themselves to any
+  // workspace. The server holds an identity the rules trust and applies every
+  // write in one batch, so acceptance can no longer half-succeed.
+  const user = getAuth().currentUser
+  if (!user) throw new Error('Sign in first.')
 
-  const invData = invSnap.data()
-  if (invData.status !== 'pending') throw new Error('Invitation is no longer pending')
-
-  // Add member to workspace
-  await inviteMember(invData.workspaceId, userId, displayName, invData.invitedEmail)
-
-  // Update workspace memberIds array
-  await updateDoc(doc(getDb(), WORKSPACES, invData.workspaceId), {
-    memberIds: arrayUnion(userId),
-    updatedAt: serverTimestamp()
+  const res = await fetch('/api/accept-invite', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${await user.getIdToken()}`,
+    },
+    body: JSON.stringify({ invitationId }),
   })
-
-  // Update invitation status
-  await updateDoc(invRef, {
-    status: 'accepted',
-    updatedAt: serverTimestamp()
-  })
-
-  // Notify the inviter
-  const ws = await getWorkspace(invData.workspaceId)
-  await createNotification({
-    userId: invData.invitedBy,
-    type: 'system',
-    title: 'Invitation Accepted',
-    body: `${displayName || invData.invitedEmail} joined "${ws?.name}".`,
-    link: '/dashboard',
-    metadata: { workspaceId: invData.workspaceId }
-  })
-
-  return invData.workspaceId
+  const payload = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(payload.error ?? 'Could not accept the invitation.')
+  return payload.workspaceId as string
 }
 
 export async function declineInvitation(invitationId: string) {
