@@ -80,12 +80,12 @@ service cloud.firestore {
 
     match /invitations/{invitationId} {
       allow read: if isSignedIn() && (
-        request.auth.token.email.lower() == resource.data.invitedEmail
+        request.auth.token.get('email', '').lower() == resource.data.invitedEmail
         || isOwnerOfWorkspace(resource.data.workspaceId)
       );
       allow create: if isSignedIn() && canWrite(request.resource.data.workspaceId);
       allow update: if isSignedIn() && (
-        request.auth.token.email.lower() == resource.data.invitedEmail
+        request.auth.token.get('email', '').lower() == resource.data.invitedEmail
         || isOwnerOfWorkspace(resource.data.workspaceId)
       );
       allow delete: if isSignedIn() && isOwnerOfWorkspace(resource.data.workspaceId);

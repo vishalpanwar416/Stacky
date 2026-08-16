@@ -12,11 +12,22 @@ import {
   getRedirectResult,
   signOut as firebaseSignOut,
   GoogleAuthProvider,
+  GithubAuthProvider,
+  fetchSignInMethodsForEmail,
+  linkWithCredential,
+  linkWithPopup,
+  unlink as firebaseUnlink,
   type User,
 } from 'firebase/auth'
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
 import { auth, getAuth, getDb } from '../lib/firebase'
-import { storeCalendarToken, clearCalendarToken, getStoredCalendarToken } from '../lib/googleCalendar'
+import {
+  isCalendarConnected,
+  clearCalendarStorage,
+  connectCalendarWithCode,
+  disconnectCalendar,
+  buildGoogleOAuthUrl,
+} from '../lib/googleCalendar'
 import type { UserProfile } from '../types'
 
 interface AuthContextValue {
@@ -25,11 +36,14 @@ interface AuthContextValue {
   loading: boolean
   signInWithGoogle: () => Promise<void>
   signInWithGoogleRedirect: () => Promise<void>
+  signInWithGithub: () => Promise<void>
+  linkGithub: () => Promise<void>
+  unlinkProvider: (providerId: string) => Promise<void>
   signOut: () => Promise<void>
   authError: string | null
   clearAuthError: () => void
-  connectGoogleCalendar: () => Promise<any>
-  disconnectGoogleCalendar: () => void
+  connectGoogleCalendar: () => Promise<void>
+  disconnectGoogleCalendar: () => Promise<void>
   calendarConnected: boolean
 }
 
@@ -40,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [authError, setAuthError] = useState<string | null>(null)
-  const [calendarConnected, setCalendarConnected] = useState(() => !!getStoredCalendarToken())
+  const [calendarConnected, setCalendarConnected] = useState(() => isCalendarConnected())
 
   useEffect(() => {
     if (!auth) {
@@ -61,7 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: string }).code) : ''
         if (code === 'auth/configuration-not-found' || msg.includes('configuration-not-found')) {
           setAuthError(
-            'Google sign-in is not configured. In Firebase Console → Authentication → Sign-in method, enable the Google provider and click Save. If you don’t see Sign-in method, click “Get started” on the Authentication page first.'
+            // Backticks: this message contains both an apostrophe and double
+            // quotes, so either quote style would have to be escaped.
+            `Google sign-in is not configured. In Firebase Console → Authentication → Sign-in method, enable the Google provider and click Save. If you don't see Sign-in method, click "Get started" on the Authentication page first.`
           )
         } else {
           setAuthError(msg)
@@ -154,12 +170,128 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         message.includes('redirect_uri')
       ) {
         setAuthError(
-          'Popup was blocked or failed. Use “Sign in with Google (redirect)” below instead.'
+          'Popup was blocked or failed. Use "Sign in with Google (redirect)" below instead.'
         )
       } else {
         setAuthError(message)
       }
     }
+  }
+
+  /**
+   * GitHub sign-in.
+   *
+   * Two things need handling that Google never raises:
+   *
+   * A GitHub account can keep its address private, and this app is email-keyed
+   * throughout — invitations are matched on it, and firestore.rules compares
+   * against the token's email claim. So the `user:email` scope is requested and
+   * sign-in is refused outright if no address comes back, rather than leaving
+   * someone signed in but unable to receive or accept an invitation.
+   *
+   * And signing in with GitHub using an address already registered via Google
+   * raises account-exists-with-different-credential. Left unhandled that reads
+   * as "login is broken"; the GitHub credential is linked onto the existing
+   * account instead, so one person keeps one identity and one set of workspaces.
+   */
+  const signInWithGithub = async () => {
+    setAuthError(null)
+    try {
+      const authInstance = getAuth()
+      const provider = new GithubAuthProvider()
+      provider.addScope('user:email')
+      const result = await signInWithPopup(authInstance, provider)
+
+      if (!result.user.email) {
+        await firebaseSignOut(authInstance)
+        setAuthError(
+          'Your GitHub account does not expose a verified email address, which Stacky needs to match invitations. Add one in GitHub email settings, or sign in with Google.'
+        )
+        return
+      }
+      try {
+        sessionStorage.setItem('stacky_show_welcome', '1')
+      } catch { }
+    } catch (err: unknown) {
+      const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: string }).code) : ''
+      const message = err instanceof Error ? err.message : String(err)
+
+      if (code === 'auth/account-exists-with-different-credential') {
+        const pending = GithubAuthProvider.credentialFromError(err as never)
+        const email = (err as { customData?: { email?: string } }).customData?.email
+        if (pending && email) {
+          try {
+            const methods = await fetchSignInMethodsForEmail(getAuth(), email)
+            if (methods.includes('google.com')) {
+              // Prove ownership through the provider that already holds the
+              // address, then attach GitHub to that same account.
+              const google = new GoogleAuthProvider()
+              google.setCustomParameters({ login_hint: email })
+              const existing = await signInWithPopup(getAuth(), google)
+              await linkWithCredential(existing.user, pending)
+              return
+            }
+          } catch (linkErr) {
+            console.error('Could not link GitHub to the existing account:', linkErr)
+          }
+        }
+        setAuthError(
+          `${email ?? 'That address'} is already registered with a different sign-in method. Sign in that way first, then GitHub will be linked to it.`
+        )
+        return
+      }
+
+      console.error('GitHub sign-in error:', err)
+      if (code === 'auth/popup-blocked' || code === 'auth/cancelled-popup-request') {
+        setAuthError('The popup was blocked. Allow popups for this site and try again.')
+      } else if (code === 'auth/operation-not-allowed') {
+        setAuthError('GitHub sign-in is not enabled for this project.')
+      } else {
+        setAuthError(message)
+      }
+    }
+  }
+
+  /**
+   * Attaches GitHub to the account that is already signed in.
+   *
+   * Distinct from signInWithGithub: that authenticates someone; this adds a
+   * second way into an existing account. Using sign-in here would create a
+   * separate account whenever the GitHub address differed from the Google one,
+   * silently splitting a person's workspaces across two identities.
+   */
+  const linkGithub = async () => {
+    const current = getAuth().currentUser
+    if (!current) throw new Error('Sign in first.')
+    const provider = new GithubAuthProvider()
+    provider.addScope('user:email')
+    try {
+      await linkWithPopup(current, provider)
+      setUser(getAuth().currentUser)
+    } catch (err: unknown) {
+      const code = err && typeof err === 'object' && 'code' in err ? String((err as { code: string }).code) : ''
+      if (code === 'auth/credential-already-in-use') {
+        throw new Error('That GitHub account is already linked to a different Stacky account.')
+      }
+      if (code === 'auth/provider-already-linked') {
+        throw new Error('GitHub is already connected to this account.')
+      }
+      throw err instanceof Error ? err : new Error(String(err))
+    }
+  }
+
+  /**
+   * Removes a sign-in method. The last one is never removable — unlinking it
+   * would leave an account nobody can get back into.
+   */
+  const unlinkProvider = async (providerId: string) => {
+    const current = getAuth().currentUser
+    if (!current) throw new Error('Sign in first.')
+    if (current.providerData.length <= 1) {
+      throw new Error('This is your only sign-in method, so it cannot be removed.')
+    }
+    await firebaseUnlink(current, providerId)
+    setUser(getAuth().currentUser)
   }
 
   const signInWithGoogleRedirect = async () => {
@@ -175,28 +307,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  /**
+   * Open a Google OAuth popup to get an auth code, then exchange it server-side
+   * for a refresh token. After this, tokens are refreshed automatically forever.
+   */
   const connectGoogleCalendar = async () => {
-    setAuthError(null)
-    try {
-      const authInstance = getAuth()
-      const provider = new GoogleAuthProvider()
-      provider.addScope('https://www.googleapis.com/auth/calendar.events')
-      provider.addScope('https://www.googleapis.com/auth/calendar.readonly')
-      const result = await signInWithPopup(authInstance, provider)
-      const credential = GoogleAuthProvider.credentialFromResult(result)
-      if (credential?.accessToken) {
-        storeCalendarToken(credential.accessToken)
-        setCalendarConnected(true)
-      }
-      return credential
-    } catch (err: unknown) {
-      console.error('Calendar connect error:', err)
-      throw err
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+    const redirectUri = import.meta.env.VITE_GOOGLE_REDIRECT_URI ?? `${window.location.origin}/gcal-callback`
+
+    if (!clientId) {
+      throw new Error('VITE_GOOGLE_CLIENT_ID is not set. Add it to your .env file.')
     }
+
+    const oauthUrl = buildGoogleOAuthUrl(clientId, redirectUri)
+
+    // Open a popup and wait for the redirect to bring back the code
+    const code = await new Promise<string>((resolve, reject) => {
+      const popup = window.open(oauthUrl, 'gcal-oauth', 'width=500,height=650,scrollbars=yes')
+      if (!popup) {
+        reject(new Error('Popup was blocked. Please allow popups for this site.'))
+        return
+      }
+
+      const handler = (e: MessageEvent) => {
+        if (e.origin !== window.location.origin) return
+        if (e.data?.type !== 'gcal-oauth-code') return
+        window.removeEventListener('message', handler)
+        clearInterval(pollTimer)
+        if (e.data.error) reject(new Error(e.data.error))
+        else resolve(e.data.code)
+      }
+      window.addEventListener('message', handler)
+
+      // Detect if the user closes the popup without completing
+      const pollTimer = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(pollTimer)
+          window.removeEventListener('message', handler)
+          reject(new Error('Google Calendar connection was cancelled.'))
+        }
+      }, 500)
+    })
+
+    // Exchange the code server-side
+    const authInstance = getAuth()
+    const idToken = await authInstance.currentUser?.getIdToken()
+    if (!idToken) throw new Error('Not signed in')
+
+    await connectCalendarWithCode(code, idToken)
+    setCalendarConnected(true)
   }
 
-  const disconnectGoogleCalendar = () => {
-    clearCalendarToken()
+  const disconnectGoogleCalendar = async () => {
+    const authInstance = getAuth()
+    const idToken = await authInstance.currentUser?.getIdToken()
+    if (idToken) await disconnectCalendar(idToken)
+    else clearCalendarStorage()
     setCalendarConnected(false)
   }
 
@@ -215,6 +381,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         signInWithGoogle,
         signInWithGoogleRedirect,
+        signInWithGithub,
+        linkGithub,
+        unlinkProvider,
         signOut,
         authError,
         clearAuthError,

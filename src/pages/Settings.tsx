@@ -84,7 +84,7 @@ function Row({
 
 export function Settings() {
   const navigate = useNavigate()
-  const { user, profile } = useAuth()
+  const { user, profile, linkGithub, unlinkProvider } = useAuth()
   const { preference, setPreference } = useTheme()
   const { toast } = useToast()
   const { workspaces } = useWorkspace()
@@ -94,6 +94,7 @@ export function Settings() {
   const [roles, setRoles] = useState<Record<string, WorkspaceRole>>({})
   const [busyInvite, setBusyInvite] = useState<string | null>(null)
   const [leaving, setLeaving] = useState<string | null>(null)
+  const [linking, setLinking] = useState(false)
 
   // Preferences are written straight through; the value shown is whatever the
   // profile currently holds, so a failed write cannot leave the UI lying.
@@ -137,6 +138,28 @@ export function Settings() {
     } catch (err) {
       console.error(err)
       toast(`Could not save ${label.toLowerCase()}`, 'error')
+    }
+  }
+
+  const providers = user?.providerData.map((p) => p.providerId) ?? []
+  const hasGithub = providers.includes('github.com')
+  const hasGoogle = providers.includes('google.com')
+
+  const toggleGithub = async () => {
+    setLinking(true)
+    try {
+      if (hasGithub) {
+        await unlinkProvider('github.com')
+        toast('GitHub disconnected', 'success')
+      } else {
+        await linkGithub()
+        toast('GitHub connected', 'success')
+      }
+    } catch (err) {
+      console.error(err)
+      toast(err instanceof Error ? err.message : 'Could not update sign-in methods', 'error')
+    } finally {
+      setLinking(false)
     }
   }
 
@@ -265,6 +288,39 @@ export function Settings() {
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
               </select>
+            </Row>
+          </Section>
+
+          <Section
+            title="Sign-in methods"
+            description="How you get into this account. Connecting more than one means losing access to a provider does not lock you out."
+          >
+            <Row label="Google" hint={hasGoogle ? (profile?.email ?? user?.email ?? undefined) : 'Not connected'}>
+              <span className="rounded-full border theme-border px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-tight theme-text-muted">
+                {hasGoogle ? 'Connected' : 'Not connected'}
+              </span>
+            </Row>
+            <Row
+              label="GitHub"
+              hint={
+                hasGithub
+                  ? user?.providerData.find((p) => p.providerId === 'github.com')?.email ?? 'Connected'
+                  : 'Sign in with your GitHub account as well as Google'
+              }
+            >
+              <button
+                type="button"
+                disabled={linking || (hasGithub && providers.length <= 1)}
+                onClick={toggleGithub}
+                title={hasGithub && providers.length <= 1 ? 'This is your only sign-in method' : undefined}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+                  hasGithub
+                    ? 'theme-text-muted hover:bg-red-500/10 hover:text-red-400'
+                    : 'border theme-border theme-text hover:bg-white/5'
+                }`}
+              >
+                {linking ? 'Working…' : hasGithub ? 'Disconnect' : 'Connect GitHub'}
+              </button>
             </Row>
           </Section>
 
