@@ -13,7 +13,7 @@ import {
   signOut as firebaseSignOut,
   GoogleAuthProvider,
   GithubAuthProvider,
-  fetchSignInMethodsForEmail,
+  type AuthCredential,
   linkWithCredential,
   linkWithPopup,
   unlink as firebaseUnlink,
@@ -39,6 +39,9 @@ interface AuthContextValue {
   signInWithGithub: () => Promise<void>
   linkGithub: () => Promise<void>
   unlinkProvider: (providerId: string) => Promise<void>
+  /** Set when a GitHub sign-in collided with an existing account. */
+  pendingLinkEmail: string | null
+  completeGithubLink: () => Promise<void>
   signOut: () => Promise<void>
   authError: string | null
   clearAuthError: () => void
@@ -55,6 +58,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [authError, setAuthError] = useState<string | null>(null)
   const [calendarConnected, setCalendarConnected] = useState(() => isCalendarConnected())
+  const [pendingGithubCred, setPendingGithubCred] = useState<AuthCredential | null>(null)
+  const [pendingLinkEmail, setPendingLinkEmail] = useState<string | null>(null)
 
   useEffect(() => {
     if (!auth) {
@@ -218,25 +223,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (code === 'auth/account-exists-with-different-credential') {
         const pending = GithubAuthProvider.credentialFromError(err as never)
-        const email = (err as { customData?: { email?: string } }).customData?.email
-        if (pending && email) {
+        const email = (err as { customData?: { email?: string } }).customData?.email ?? null
+
+        if (pending) {
+          setPendingGithubCred(pending)
+          setPendingLinkEmail(email)
           try {
-            const methods = await fetchSignInMethodsForEmail(getAuth(), email)
-            if (methods.includes('google.com')) {
-              // Prove ownership through the provider that already holds the
-              // address, then attach GitHub to that same account.
-              const google = new GoogleAuthProvider()
-              google.setCustomParameters({ login_hint: email })
-              const existing = await signInWithPopup(getAuth(), google)
-              await linkWithCredential(existing.user, pending)
-              return
-            }
-          } catch (linkErr) {
-            console.error('Could not link GitHub to the existing account:', linkErr)
+            // Try to finish it now, so the person just gets signed in.
+            await linkPendingWith(pending, email)
+            return
+          } catch {
+            // Usually the browser blocking a second popup outside a user
+            // gesture. Fall through to a button they can click, rather than
+            // telling them to go and do it themselves.
+            setAuthError(
+              `${email ?? 'That address'} already signs in with Google. Continue with Google below and GitHub will be linked to it.`
+            )
+            return
           }
         }
         setAuthError(
-          `${email ?? 'That address'} is already registered with a different sign-in method. Sign in that way first, then GitHub will be linked to it.`
+          `${email ?? 'That address'} is already registered with a different sign-in method.`
         )
         return
       }
@@ -292,6 +299,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     await firebaseUnlink(current, providerId)
     setUser(getAuth().currentUser)
+  }
+
+  /**
+   * Finishes a GitHub sign-in that collided with an existing account.
+   *
+   * Ownership is proved through the provider that already holds the address —
+   * Google — and the GitHub credential is then attached to that same account.
+   *
+   * There is deliberately no fetchSignInMethodsForEmail check first: this
+   * project has improved email privacy enabled, under which that call always
+   * returns an empty array, so gating on it meant the link never ran.
+   */
+  const linkPendingWith = async (credential: AuthCredential, email: string | null) => {
+    const google = new GoogleAuthProvider()
+    if (email) google.setCustomParameters({ login_hint: email })
+    const existing = await signInWithPopup(getAuth(), google)
+    await linkWithCredential(existing.user, credential)
+    setPendingGithubCred(null)
+    setPendingLinkEmail(null)
+    setAuthError(null)
+    try {
+      sessionStorage.setItem('stacky_show_welcome', '1')
+    } catch { }
+  }
+
+  const completeGithubLink = async () => {
+    if (!pendingGithubCred) return
+    try {
+      await linkPendingWith(pendingGithubCred, pendingLinkEmail)
+    } catch (err) {
+      console.error('Linking GitHub failed:', err)
+      setAuthError(err instanceof Error ? err.message : 'Could not link GitHub.')
+    }
   }
 
   const signInWithGoogleRedirect = async () => {
@@ -384,6 +424,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signInWithGithub,
         linkGithub,
         unlinkProvider,
+        pendingLinkEmail,
+        completeGithubLink,
         signOut,
         authError,
         clearAuthError,

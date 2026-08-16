@@ -156,7 +156,7 @@ function FeatureIcon({ name }: { name: string }) {
 import updates from '../../docs/updates.json'
 
 export function Login() {
-  const { user, loading, signInWithGoogle, signInWithGithub, authError, clearAuthError } = useAuth()
+  const { user, loading, signInWithGoogle, signInWithGithub, authError, clearAuthError, pendingLinkEmail, completeGithubLink } = useAuth()
 
   if (loading) {
     return (
@@ -238,9 +238,19 @@ export function Login() {
             {authError && (
               <div className="mb-4 w-full max-w-sm rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
                 <p>{authError}</p>
-                <button type="button" onClick={clearAuthError} className="mt-2 text-xs underline hover:no-underline">
-                  Dismiss
-                </button>
+                {pendingLinkEmail ? (
+                  <button
+                    type="button"
+                    onClick={completeGithubLink}
+                    className="mt-3 w-full rounded-xl bg-amber-500/20 px-4 py-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-500/30"
+                  >
+                    Continue with Google to link GitHub
+                  </button>
+                ) : (
+                  <button type="button" onClick={clearAuthError} className="mt-2 text-xs underline hover:no-underline">
+                    Dismiss
+                  </button>
+                )}
               </div>
             )}
             <button
