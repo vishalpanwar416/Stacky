@@ -82,7 +82,34 @@ export default async function handler(req: any, res: any) {
       .where('status', '==', 'pending')
       .get()
     if (!pending.empty) {
-      return res.status(409).json({ error: 'They already have a pending invitation.' })
+      const existing = pending.docs[0]
+      const inv = existing.data()
+      const mail = invitationEmail({
+        workspaceName: inv.workspaceName ?? ws.name ?? 'a workspace',
+        inviterName: inv.invitedByName ?? null,
+        inviterEmail: caller.email ?? null,
+        role: inv.role ?? 'member',
+        appUrl: process.env.APP_URL ?? 'https://stackyy.vercel.app',
+      })
+      const again = await sendEmail({
+        to: email,
+        subject: mail.subject,
+        html: mail.html,
+        text: mail.text,
+        replyTo: caller.email,
+      })
+      await existing.ref.update({
+        emailed: again.ok,
+        emailError: again.ok ? null : again.reason,
+        emailedAt: FieldValue.serverTimestamp(),
+      })
+      return res.status(200).json({
+        invitationId: existing.id,
+        resent: true,
+        emailed: again.ok,
+        emailError: again.ok ? null : again.reason,
+        hasAccount: !!inviteeId,
+      })
     }
 
     // --- create it --------------------------------------------------------
@@ -130,6 +157,14 @@ export default async function handler(req: any, res: any) {
       html: mail.html,
       text: mail.text,
       replyTo: caller.email,
+    })
+
+    // Without this, whether a message went out is unknowable after the request
+    // ends — which is exactly the question asked when one does not arrive.
+    await invitation.update({
+      emailed: sent.ok,
+      emailError: sent.ok ? null : sent.reason,
+      emailedAt: FieldValue.serverTimestamp(),
     })
 
     return res.status(200).json({

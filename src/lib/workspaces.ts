@@ -344,6 +344,8 @@ const INVITATIONS = 'invitations'
 
 export interface InviteResult {
   invitationId: string
+  /** True when this re-sent an invitation that already existed. */
+  resent?: boolean
   /** False when the invitation was created but no email went out. */
   emailed: boolean
   emailError: string | null

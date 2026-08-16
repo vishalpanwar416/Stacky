@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getWorkspaceMembers, createInvitation, updateMemberRole, removeMember, linkRepo, listGithubRepos, listRepoLinks, normaliseRepo, type GithubRepo } from '../lib/workspaces'
+import { getWorkspaceMembers, createInvitation, updateMemberRole, removeMember, linkRepo, listGithubRepos, listRepoLinks, normaliseRepo, getWorkspaceInvitations, type GithubRepo } from '../lib/workspaces'
 import { searchUsers } from '../lib/users'
 import type { Workspace, WorkspaceMember, UserProfile, WorkspaceRole, Project } from '../types'
 import { getProjectsByWorkspace } from '../lib/projects'
@@ -59,6 +59,7 @@ export function WorkspaceSettingsModal({
     useEffect(() => {
         if (isOpen && activeTab === 'members') {
             fetchMembers()
+            void refreshInvites()
         }
     }, [isOpen, activeTab, workspace.id])
 
@@ -95,6 +96,15 @@ export function WorkspaceSettingsModal({
     const [reposLoading, setReposLoading] = useState(false)
     const [githubConnected, setGithubConnected] = useState<boolean | null>(null)
     const [reposError, setReposError] = useState<string | null>(null)
+    const [invites, setInvites] = useState<any[]>([])
+
+    const refreshInvites = async () => {
+        try {
+            setInvites(await getWorkspaceInvitations(workspace.id))
+        } catch (error) {
+            console.error('Could not load pending invitations:', error)
+        }
+    }
 
     // Only ask GitHub when the tab that shows the chooser is actually open.
     useEffect(() => {
@@ -259,7 +269,7 @@ export function WorkspaceSettingsModal({
             // The invitation always exists; the email may not have gone out.
             // Saying "sent" either way would be a lie the inviter acts on.
             if (result.emailed) {
-                toast(`Invitation emailed to ${email}`, 'success')
+                toast(result.resent ? `Invitation resent to ${email}` : `Invitation emailed to ${email}`, 'success')
             } else if (result.hasAccount) {
                 toast(`${email} was invited — they'll see it in Stacky. Email failed: ${result.emailError}`, 'success')
             } else {
@@ -268,6 +278,7 @@ export function WorkspaceSettingsModal({
             setInviteEmail('')
             setShowResults(false)
             setSearchResults([])
+            void refreshInvites()
         } catch (error) {
             console.error(error)
             toast(error instanceof Error ? error.message : 'Failed to send invite', 'error')
@@ -499,6 +510,38 @@ export function WorkspaceSettingsModal({
                                             })}
                                         </div>
                                     )}
+                                </div>
+                            )}
+
+                            {invites.length > 0 && (
+                                <div className="mb-5 space-y-2">
+                                    <h3 className="text-xs font-semibold uppercase tracking-wider theme-text-muted">
+                                        Pending invitations ({invites.length})
+                                    </h3>
+                                    {invites.map((inv) => (
+                                        <div key={inv.id} className="flex items-center justify-between gap-3 rounded-lg border theme-border p-2">
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm theme-text">{inv.invitedEmail}</p>
+                                                <p className="mt-0.5 text-[11px] theme-text-muted">
+                                                    {/* Undefined means it predates delivery being recorded — say so
+                                                        rather than implying it was sent. */}
+                                                    {inv.emailed === true
+                                                        ? 'Email delivered'
+                                                        : inv.emailed === false
+                                                            ? `Email failed: ${inv.emailError ?? 'unknown reason'}`
+                                                            : 'Delivery not recorded'}
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                disabled={inviting}
+                                                onClick={() => handleInvite(undefined, inv.invitedEmail)}
+                                                className="shrink-0 rounded-lg border theme-border px-2.5 py-1 text-xs font-medium theme-text transition-colors theme-surface-hover-bg disabled:opacity-40"
+                                            >
+                                                Resend
+                                            </button>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
 
