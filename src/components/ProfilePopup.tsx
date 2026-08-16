@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+
 import { McpAccessModal } from './McpAccessModal'
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
@@ -9,6 +11,7 @@ interface ProfilePopupProps {
 }
 
 export function ProfilePopup({ onClose }: ProfilePopupProps) {
+    const navigate = useNavigate()
     const [mcpOpen, setMcpOpen] = useState(false)
     const { user, profile, signOut } = useAuth()
     const photoURL = profile?.photoURL ?? user?.photoURL
@@ -72,8 +75,7 @@ export function ProfilePopup({ onClose }: ProfilePopupProps) {
                         <button
                             type="button"
                             onClick={() => {
-                                // Placeholder for future settings
-                                alert('Settings coming soon!')
+                                navigate('/settings')
                                 onClose()
                             }}
                             className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm theme-text-muted transition-colors theme-surface-hover-bg hover:theme-text text-left"

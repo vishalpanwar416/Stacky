@@ -1,5 +1,9 @@
 import { useState } from 'react'
 
+import { useAuth } from '../contexts/AuthContext'
+
+const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+
 interface MiniCalendarProps {
     onSelectDate: (date: Date) => void
     className?: string
@@ -7,13 +11,19 @@ interface MiniCalendarProps {
 
 export function MiniCalendar({ onSelectDate, className = '' }: MiniCalendarProps) {
     const [viewDate, setViewDate] = useState(new Date())
+    const { profile } = useAuth()
+    // 0 = Sunday. The grid was hardcoded to Sunday-first, which is wrong for
+    // most of the world; the preference existed in the data model with nothing
+    // reading it.
+    const weekStartsOn = profile?.preferences?.weekStartsOn ?? 0
 
     const getDaysInMonth = (year: number, month: number) => {
         return new Date(year, month + 1, 0).getDate()
     }
 
+    // Offset of the 1st within a week that begins on `weekStartsOn`.
     const getFirstDayOfMonth = (year: number, month: number) => {
-        return new Date(year, month, 1).getDay() // 0 = Sunday
+        return (new Date(year, month, 1).getDay() - weekStartsOn + 7) % 7
     }
 
     const prevMonth = () => {
@@ -63,8 +73,8 @@ export function MiniCalendar({ onSelectDate, className = '' }: MiniCalendarProps
             </div>
 
             <div className="grid grid-cols-7 gap-1 text-center mb-2">
-                {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => (
-                    <span key={d} className="text-[10px] uppercase font-bold theme-text-muted opacity-60">
+                {WEEKDAYS.map((d, i) => [d, i]).slice(weekStartsOn).concat(WEEKDAYS.map((d, i) => [d, i]).slice(0, weekStartsOn)).map(([d, i]) => (
+                    <span key={i as number} className="text-[10px] uppercase font-bold theme-text-muted opacity-60">
                         {d}
                     </span>
                 ))}
