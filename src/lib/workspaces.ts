@@ -14,7 +14,6 @@ import {
 } from 'firebase/firestore'
 import type { Unsubscribe } from 'firebase/firestore'
 import { getAuth, getDb } from './firebase'
-import { getUserByEmail } from './users'
 import { createNotification } from './notifications'
 import type { WorkspaceRole, Workspace, WorkspaceMember } from '../types'
 
@@ -219,56 +218,41 @@ export async function inviteMember(
 
 const INVITATIONS = 'invitations'
 
+export interface InviteResult {
+  invitationId: string
+  /** False when the invitation was created but no email went out. */
+  emailed: boolean
+  emailError: string | null
+  hasAccount: boolean
+}
+
+/**
+ * Invites someone to a workspace and emails them.
+ *
+ * Runs on the server: an invitee without an account cannot be notified in-app,
+ * so until this existed they were never told anything. The server also owns the
+ * duplicate check and the permission check, since it writes with the Admin SDK.
+ */
 export async function createInvitation(
   workspaceId: string,
   email: string,
-  invitedBy: string,
-  invitedByName?: string
-) {
-  const normalizedEmail = email.toLowerCase().trim()
-  const invitationsRef = collection(getDb(), INVITATIONS)
+  _invitedBy?: string,
+  _invitedByName?: string
+): Promise<InviteResult> {
+  const user = getAuth().currentUser
+  if (!user) throw new Error('Sign in first.')
 
-  const q = query(
-    invitationsRef,
-    where('workspaceId', '==', workspaceId),
-    where('invitedEmail', '==', normalizedEmail),
-    where('status', '==', 'pending')
-  )
-  const existing = await getDocs(q)
-  if (!existing.empty) {
-    throw new Error('Invitation already pending for this email')
-  }
-
-  // The notification shows who invited you and to what. Reading that from the
-  // users and workspaces collections at display time would mean the invitee
-  // needs read access to both — which they do not have, and should not. Store
-  // it on the invitation, which is addressed to them.
-  const ws = await getWorkspace(workspaceId)
-
-  await addDoc(invitationsRef, {
-    workspaceId,
-    workspaceName: ws?.name ?? null,
-    invitedEmail: normalizedEmail,
-    status: 'pending',
-    role: 'member',
-    invitedBy,
-    invitedByName: invitedByName ?? null,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+  const res = await fetch('/api/invite', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${await user.getIdToken()}`,
+    },
+    body: JSON.stringify({ workspaceId, email: email.toLowerCase().trim() }),
   })
-
-  // Try to notify the user if they already exist
-  const existingUser = await getUserByEmail(normalizedEmail)
-  if (existingUser) {
-    await createNotification({
-      userId: existingUser.id,
-      type: 'invitation',
-      title: 'Workspace Invitation',
-      body: `You've been invited to join "${ws?.name || 'a workspace'}".`,
-      link: '/dashboard', // Can refine later
-      metadata: { workspaceId }
-    })
-  }
+  const payload = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(payload.error ?? 'Could not send the invitation.')
+  return payload as InviteResult
 }
 
 export function subscribeUserInvitations(email: string, callback: (invites: any[]) => void): Unsubscribe {

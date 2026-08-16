@@ -168,8 +168,16 @@ export function WorkspaceSettingsModal({
 
         setInviting(true)
         try {
-            await createInvitation(workspace.id, email, user.uid, profile?.displayName ?? undefined)
-            toast(`Invitation sent to ${email}`, 'success')
+            const result = await createInvitation(workspace.id, email, user.uid, profile?.displayName ?? undefined)
+            // The invitation always exists; the email may not have gone out.
+            // Saying "sent" either way would be a lie the inviter acts on.
+            if (result.emailed) {
+                toast(`Invitation emailed to ${email}`, 'success')
+            } else if (result.hasAccount) {
+                toast(`${email} was invited — they'll see it in Stacky. Email failed: ${result.emailError}`, 'success')
+            } else {
+                toast(`Invitation created, but the email could not be sent. ${result.emailError}`, 'error')
+            }
             setInviteEmail('')
             setShowResults(false)
             setSearchResults([])
