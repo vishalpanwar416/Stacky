@@ -226,6 +226,26 @@ export async function removeMember(
 /** Leaving is removing yourself. */
 export const leaveWorkspace = (workspaceId: string) => removeMember(workspaceId)
 
+/**
+ * Connects a GitHub repository to this workspace so pushes and pull requests
+ * can be matched against its tasks. Owner-only, enforced server-side.
+ */
+export async function linkRepo(workspaceId: string, repo: string, connect: boolean) {
+  const user = getAuth().currentUser
+  if (!user) throw new Error('Sign in first.')
+  const res = await fetch('/api/repo-link', {
+    method: connect ? 'POST' : 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${await user.getIdToken()}`,
+    },
+    body: JSON.stringify({ workspaceId, repo }),
+  })
+  const payload = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(payload.error ?? 'Could not update the repository link.')
+  return payload as { repo: string; linked: boolean }
+}
+
 export async function getWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {
   const snap = await getDocs(collection(getDb(), WORKSPACES, workspaceId, MEMBERS))
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkspaceMember))

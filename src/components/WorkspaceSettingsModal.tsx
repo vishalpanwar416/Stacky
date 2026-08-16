@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getWorkspaceMembers, createInvitation, updateMemberRole, removeMember } from '../lib/workspaces'
+import { getWorkspaceMembers, createInvitation, updateMemberRole, removeMember, linkRepo } from '../lib/workspaces'
 import { searchUsers } from '../lib/users'
 import type { Workspace, WorkspaceMember, UserProfile, WorkspaceRole } from '../types'
 
@@ -86,6 +86,22 @@ export function WorkspaceSettingsModal({
     }
 
     const [savingRole, setSavingRole] = useState<string | null>(null)
+    const [repo, setRepo] = useState((workspace as { repo?: string }).repo ?? '')
+    const [linkingRepo, setLinkingRepo] = useState(false)
+
+    const handleLinkRepo = async (connect: boolean) => {
+        setLinkingRepo(true)
+        try {
+            await linkRepo(workspace.id, repo.trim(), connect)
+            toast(connect ? `Connected ${repo.trim()}` : 'Repository disconnected', 'success')
+            if (!connect) setRepo('')
+        } catch (error) {
+            console.error(error)
+            toast(error instanceof Error ? error.message : 'Could not update the repository', 'error')
+        } finally {
+            setLinkingRepo(false)
+        }
+    }
     const isOwner = workspace.ownerId === user?.uid
 
     /**
@@ -357,6 +373,40 @@ export function WorkspaceSettingsModal({
                                     {inviting ? 'Sending…' : 'Invite'}
                                 </button>
                             </form>
+
+                            {isOwner && (
+                                <div className="mb-5 rounded-xl border theme-border p-3">
+                                    <p className="text-xs font-semibold uppercase tracking-wider theme-text-muted">GitHub repository</p>
+                                    <p className="mt-1 text-xs theme-text-muted">
+                                        Pushes and pull requests here are matched against this workspace's tasks, and Stacky suggests status changes for you to approve.
+                                    </p>
+                                    <div className="mt-3 flex gap-2">
+                                        <input
+                                            value={repo}
+                                            onChange={(e) => setRepo(e.target.value)}
+                                            placeholder="owner/repository"
+                                            className="min-w-0 flex-1 rounded-xl theme-input px-3 py-2 text-sm"
+                                        />
+                                        <button
+                                            type="button"
+                                            disabled={linkingRepo || !repo.trim()}
+                                            onClick={() => handleLinkRepo(true)}
+                                            className="shrink-0 rounded-xl border theme-border px-3 py-2 text-xs font-medium theme-text transition-colors theme-surface-hover-bg disabled:opacity-40"
+                                        >
+                                            {linkingRepo ? 'Saving…' : 'Connect'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            disabled={linkingRepo || !repo.trim()}
+                                            onClick={() => handleLinkRepo(false)}
+                                            className="shrink-0 rounded-xl px-2 py-2 text-xs theme-text-faint transition-colors hover:text-red-400 disabled:opacity-40"
+                                            title="Disconnect"
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="space-y-3">
                                 <h3 className="text-xs font-semibold uppercase tracking-wider theme-text-muted">

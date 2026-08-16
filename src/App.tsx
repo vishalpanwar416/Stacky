@@ -13,6 +13,7 @@ import { NewTask } from './pages/NewTask'
 import { TaskDetail } from './pages/TaskDetail'
 import { Analytics } from './pages/Analytics'
 import { Settings } from './pages/Settings'
+import { GcalCallback } from './pages/GcalCallback'
 import { isFirebaseConfigured } from './lib/firebase'
 
 class ErrorBoundary extends Component<
@@ -103,6 +104,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/gcal-callback" element={<GcalCallback />} />
       <Route
         path="/settings"
         element={

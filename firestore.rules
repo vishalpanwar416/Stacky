@@ -78,6 +78,24 @@ service cloud.firestore {
       }
     }
 
+    // Suggestions raised by the GitHub webhook. Written only by the server,
+    // which has no signed-in caller; members read them and mark them applied or
+    // dismissed. suggestedStatus is never writable from the client — otherwise
+    // "approve" could be pointed at any status.
+    match /gitSuggestions/{suggestionId} {
+      allow read: if isSignedIn() && isWorkspaceMember(resource.data.workspaceId);
+      allow update: if isSignedIn()
+        && canWrite(resource.data.workspaceId)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'resolvedBy', 'resolvedAt']);
+      allow create, delete: if false;
+    }
+
+    // Repository → workspace mapping, maintained through /api/repo-link.
+    match /repoLinks/{linkId} {
+      allow read, write: if false;
+    }
+
     match /invitations/{invitationId} {
       allow read: if isSignedIn() && (
         request.auth.token.get('email', '').lower() == resource.data.invitedEmail

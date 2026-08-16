@@ -7,12 +7,13 @@ import { subscribeTasksByWorkspace, updateTask, toggleTaskTimer } from '../lib/t
 import { getCountdown as getTaskCountdown } from '../lib/taskUtils'
 import { deleteWorkspace, updateWorkspace } from '../lib/workspaces'
 import { getProjectsByWorkspace, createProject } from '../lib/projects'
+import { getAuth } from '../lib/firebase'
 import {
   fetchCalendarEvents,
   groupEventsByDate,
-  getStoredCalendarToken,
-  clearCalendarToken,
+  getValidAccessToken,
   CalendarAuthError,
+  CalendarNotConnectedError,
   type GCalEvent,
 } from '../lib/googleCalendar'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
@@ -25,6 +26,7 @@ import { DashboardSidebar } from '../components/DashboardSidebar'
 import { WelcomeOverlay } from '../components/WelcomeOverlay'
 import { TaskTimer } from '../components/TaskTimer'
 import { WorkspaceSettingsModal } from '../components/WorkspaceSettingsModal'
+import { GitSuggestions } from '../components/GitSuggestions'
 import { AiFocusPanel } from '../components/AiFocusPanel'
 import { AppHeader } from '../components/AppHeader'
 import type { Task, Project, Workspace } from '../types'
@@ -180,37 +182,43 @@ export function Dashboard() {
     }
   }, [completingTaskId, blockingTaskId, commandBarOpen, newProjectOpen, shortcutsOpen, headerOverlayOpen])
 
-  // Fetch Google Calendar events when the calendar is open
+  // Fetch Google Calendar events when the calendar is open.
+  // getValidAccessToken() refreshes the access token server-side if needed —
+  // the user never has to click "reconnect" again after the first connect.
   useEffect(() => {
-    if (!calendarOpen) return
-    const token = getStoredCalendarToken()
-    if (!token) {
-      setGcalEvents([])
-      return
-    }
+    if (!calendarOpen || !calendarConnected) return
     let cancelled = false
     setGcalLoading(true)
     setGcalError(null)
-    fetchCalendarEvents(calendarMonth, token)
-      .then((events) => {
+
+    const run = async () => {
+      try {
+        // Get a valid (possibly freshly-refreshed) access token
+        const idToken = await getAuth()?.currentUser?.getIdToken()
+        if (!idToken) throw new Error('Not signed in')
+        const accessToken = await getValidAccessToken(idToken)
+        const events = await fetchCalendarEvents(calendarMonth, accessToken)
         if (!cancelled) setGcalEvents(events)
-      })
-      .catch((err) => {
+      } catch (err) {
         if (cancelled) return
-        if (err instanceof CalendarAuthError) {
-          // Token expired — clear it and surface a reconnect prompt
-          clearCalendarToken()
+        if (err instanceof CalendarNotConnectedError) {
+          // Not connected — show the connect prompt, don't show an error
+          if (!cancelled) setGcalEvents([])
+        } else if (err instanceof CalendarAuthError) {
           setGcalError('Your Google Calendar session expired. Click the sync button to reconnect.')
           setGcalEvents([])
         } else {
-          setGcalError('Could not load Google Calendar events.')
+          const msg = err instanceof Error ? err.message : 'Could not load Google Calendar events.'
+          setGcalError(msg)
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setGcalLoading(false)
-      })
+      }
+    }
+
+    void run()
     return () => { cancelled = true }
-  }, [calendarOpen, calendarMonth])
+  }, [calendarOpen, calendarMonth, calendarConnected])
 
   const toggleSidebar = () => {
     setSidebarCollapsed((c) => {
@@ -383,21 +391,11 @@ export function Dashboard() {
     try {
       await connectGoogleCalendar()
       pushToast('Google Calendar connected!', 'success')
-      // Trigger a refetch if calendar is open
       setGcalError(null)
-      if (calendarOpen) {
-        const token = getStoredCalendarToken()
-        if (token) {
-          setGcalLoading(true)
-          fetchCalendarEvents(calendarMonth, token)
-            .then(setGcalEvents)
-            .catch(() => setGcalError('Could not load Google Calendar events.'))
-            .finally(() => setGcalLoading(false))
-        }
-      }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to connect to Google Calendar'
       console.error(err)
-      pushToast('Failed to connect to Google Calendar', 'error')
+      pushToast(msg, 'error')
     }
   }
 
@@ -761,6 +759,8 @@ export function Dashboard() {
                   )}
                 </div>
               </div>
+
+              <GitSuggestions workspaceId={currentWorkspace.id} canWrite={canWrite} />
 
               <div className="grid gap-8 xl:grid-cols-2">
                 <section>
