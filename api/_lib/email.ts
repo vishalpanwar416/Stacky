@@ -17,6 +17,14 @@ const ENDPOINT = 'https://api.resend.com/emails'
  */
 const FROM = process.env.RESEND_FROM ?? 'Stacky <onboarding@resend.dev>'
 
+/** Do the From and Reply-To addresses sit on the same domain? */
+function sameDomain(from: string, replyTo: string): boolean {
+  const domainOf = (value: string) => value.match(/@([^>\s]+)/)?.[1]?.toLowerCase() ?? ''
+  const a = domainOf(from)
+  const b = domainOf(replyTo)
+  return !!a && a === b
+}
+
 export type SendResult = { ok: true } | { ok: false; reason: string }
 
 export async function sendEmail(input: {
@@ -39,7 +47,16 @@ export async function sendEmail(input: {
         subject: input.subject,
         html: input.html,
         text: input.text,
-        ...(input.replyTo ? { reply_to: input.replyTo } : {}),
+        // Reply-To is only set when it shares the sending domain.
+        //
+        // Pointing it at the inviter's personal address looked helpful and cost
+        // 2.7 SpamAssassin points: a branded From with a freemail Reply-To is a
+        // phishing signature (FREEMAIL_FORGED_REPLYTO), and it was the single
+        // largest reason invitations were landing in spam. The inviter's address
+        // is still in the body, where it informs without impersonating.
+        ...(input.replyTo && sameDomain(FROM, input.replyTo)
+          ? { reply_to: input.replyTo }
+          : {}),
       }),
     })
 
