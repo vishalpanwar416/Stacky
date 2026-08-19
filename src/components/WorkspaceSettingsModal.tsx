@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { getWorkspaceMembers, createInvitation, updateMemberRole, removeMember, linkRepo, listGithubRepos, listRepoLinks, normaliseRepo, getWorkspaceInvitations, type GithubRepo } from '../lib/workspaces'
-import { searchUsers } from '../lib/users'
+import { getUserByEmail } from '../lib/users'
 import type { Workspace, WorkspaceMember, UserProfile, WorkspaceRole, Project } from '../types'
 import { getProjectsByWorkspace } from '../lib/projects'
 
@@ -221,22 +221,32 @@ export function WorkspaceSettingsModal({
             }
             : { name: member.displayName ?? null, email: member.email ?? null }
 
+    /**
+     * Checks one complete address, rather than searching a directory.
+     *
+     * The previous version queried every user by name prefix on each keystroke,
+     * which is what forced the users collection open. This asks a single
+     * question about a single address — one the inviter learns anyway by
+     * sending the invitation — and only once the input is a plausible email.
+     */
     const handleSearch = async (val: string) => {
         setInviteEmail(val)
-        if (val.trim().length >= 2) {
-            setSearching(true)
-            setShowResults(true)
-            try {
-                const results = await searchUsers(val.trim())
-                setSearchResults(results)
-            } catch (err) {
-                console.error('Search error:', err)
-            } finally {
-                setSearching(false)
-            }
-        } else {
+        const value = val.trim().toLowerCase()
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
             setSearchResults([])
             setShowResults(false)
+            return
+        }
+        setSearching(true)
+        setShowResults(true)
+        try {
+            const found = await getUserByEmail(value)
+            setSearchResults(found ? [{ id: found.id, email: value } as UserProfile] : [])
+        } catch (err) {
+            console.error('Lookup error:', err)
+            setSearchResults([])
+        } finally {
+            setSearching(false)
         }
     }
 
@@ -390,39 +400,15 @@ export function WorkspaceSettingsModal({
                                         </div>
                                     )}
 
-                                    {showResults && searchResults.length > 0 && (
-                                        <div className="absolute left-0 right-0 top-full z-20 mt-2 max-h-60 overflow-y-auto rounded-xl border theme-border theme-bg-subtle backdrop-blur-xl shadow-2xl animate-scale-in ring-1 ring-black/5">
-                                            {searchResults.map((res) => (
-                                                <button
-                                                    key={res.id}
-                                                    type="button"
-                                                    onClick={() => handleInvite(undefined, res.email)}
-                                                    className="flex w-full items-center gap-3 p-3 text-left transition-all hover:bg-white/10 active:scale-[0.98]"
-                                                >
-                                                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl font-medium text-sm ${res.photoURL ? '' : 'bg-primary/20 theme-text'}`}>
-                                                        {res.photoURL ? (
-                                                            <img src={res.photoURL} alt="" className="h-full w-full rounded-xl object-cover" />
-                                                        ) : (
-                                                            (res.displayName?.[0] || res.email?.[0] || '?').toUpperCase()
-                                                        )}
-                                                    </div>
-                                                    <div className="min-w-0 flex-1">
-                                                        <div className="truncate text-sm font-semibold theme-text">{res.displayName}</div>
-                                                        <div className="truncate text-xs theme-text-muted">{res.email}</div>
-                                                    </div>
-                                                    <div className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
-                                                        <svg className="h-4 w-4 theme-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                                        </svg>
-                                                    </div>
-                                                </button>
-                                            ))}
+                                    {showResults && !searching && searchResults.length > 0 && (
+                                        <div className="absolute left-0 right-0 top-full z-20 mt-2 rounded-xl border theme-border theme-bg-subtle p-3 shadow-2xl animate-scale-in text-sm theme-text-muted">
+                                            <span className="theme-text">{inviteEmail.trim()}</span> already has a Stacky account — they will see the invitation in the app as well as by email.
                                         </div>
                                     )}
 
-                                    {showResults && !searching && searchResults.length === 0 && inviteEmail.length >= 2 && (
-                                        <div className="absolute left-0 right-0 top-full z-20 mt-2 rounded-xl border theme-border theme-bg-subtle backdrop-blur-xl p-4 shadow-2xl animate-scale-in text-center text-sm theme-text-muted">
-                                            No users found. Hit enter to invite via email.
+                                    {showResults && !searching && searchResults.length === 0 && (
+                                        <div className="absolute left-0 right-0 top-full z-20 mt-2 rounded-xl border theme-border theme-bg-subtle p-3 shadow-2xl animate-scale-in text-sm theme-text-muted">
+                                            No Stacky account yet — they will be invited by email.
                                         </div>
                                     )}
                                 </div>

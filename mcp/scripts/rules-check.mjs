@@ -98,11 +98,12 @@ check('cannot read aiBudget', budget.status === 403, `HTTP ${budget.status}`)
 const own = await as(`users/${ATTACKER.uid}`)
 check('can still read own profile', own.status === 200, `HTTP ${own.status}`)
 
-// --- known-open hole, asserted so it cannot regress silently -------------
+// --- the hole that is now closed -----------------------------------------
 const otherProfile = await as(`users/${VICTIM.uid}`)
-console.log(
-  `\nSTILL OPEN  reading another user's profile — HTTP ${otherProfile.status}` +
-    ' (needs the email lookup moved server-side first)'
+check(
+  "cannot read another user's profile",
+  otherProfile.status === 403,
+  `HTTP ${otherProfile.status}`
 )
 
 console.log(failures === 0 ? '\nALL PASSED' : `\n${failures} FAILURE(S)`)

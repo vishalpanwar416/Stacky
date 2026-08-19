@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Component, type ErrorInfo, type ReactNode, lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { WorkspaceProvider } from './contexts/WorkspaceContext'
@@ -6,15 +6,18 @@ import { ToastProvider } from './contexts/ToastContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { ToastContainer } from './components/ToastContainer'
 import { Skeleton } from './components/Skeleton'
-import { Dashboard } from './pages/Dashboard'
-import { Login } from './pages/Login'
-import { CreateWorkspace } from './pages/CreateWorkspace'
-import { NewTask } from './pages/NewTask'
-import { TaskDetail } from './pages/TaskDetail'
-import { Analytics } from './pages/Analytics'
-import { Settings } from './pages/Settings'
-import { GcalCallback } from './pages/GcalCallback'
 import { isFirebaseConfigured } from './lib/firebase'
+
+/* Pages load on demand: the landing page no longer ships the dashboard,
+ * the charts and the AI client to someone who has not signed in. */
+const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
+const Login = lazy(() => import('./pages/Login').then((m) => ({ default: m.Login })))
+const CreateWorkspace = lazy(() => import('./pages/CreateWorkspace').then((m) => ({ default: m.CreateWorkspace })))
+const NewTask = lazy(() => import('./pages/NewTask').then((m) => ({ default: m.NewTask })))
+const TaskDetail = lazy(() => import('./pages/TaskDetail').then((m) => ({ default: m.TaskDetail })))
+const Analytics = lazy(() => import('./pages/Analytics').then((m) => ({ default: m.Analytics })))
+const Settings = lazy(() => import('./pages/Settings').then((m) => ({ default: m.Settings })))
+const GcalCallback = lazy(() => import('./pages/GcalCallback').then((m) => ({ default: m.GcalCallback })))
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -102,6 +105,14 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   return (
+    // Lazy pages need a boundary while their chunk downloads.
+    <Suspense
+      fallback={
+        <div className="theme-page flex min-h-screen items-center justify-center">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-(--color-accent) border-t-transparent" />
+        </div>
+      }
+    >
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/gcal-callback" element={<GcalCallback />} />
@@ -163,6 +174,7 @@ function AppRoutes() {
       />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   )
 }
 

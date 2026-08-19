@@ -1,4 +1,4 @@
-import { collection, query, where, getDocs, limit, doc, updateDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { getAuth, getDb } from './firebase'
 import type { UserProfile } from '../types'
 
@@ -43,40 +43,13 @@ export async function getUserByEmail(email: string): Promise<{ id: string } | nu
   return userId ? { id: userId } : null
 }
 
-export async function searchUsers(searchTerm: string): Promise<UserProfile[]> {
-  if (!searchTerm || searchTerm.length < 2) return []
-
-  const db = getDb()
-  const usersRef = collection(db, USERS)
-
-  // Basic prefix search for displayName
-  // Note: This is case-sensitive in Firestore.
-  // To make it case-insensitive, we would need to store a lowercase version of the name.
-  // For now, let's do a simple approach.
-
-  const qByName = query(
-    usersRef,
-    where('displayName', '>=', searchTerm),
-    where('displayName', '<=', searchTerm + '\uf8ff'),
-    limit(5)
-  )
-
-  const qByEmail = query(
-    usersRef,
-    where('email', '>=', searchTerm),
-    where('email', '<=', searchTerm + '\uf8ff'),
-    limit(5)
-  )
-
-  const [snapName, snapEmail] = await Promise.all([
-    getDocs(qByName),
-    getDocs(qByEmail)
-  ])
-
-  const results = new Map<string, UserProfile>()
-
-  snapName.docs.forEach(d => results.set(d.id, { id: d.id, ...d.data() } as UserProfile))
-  snapEmail.docs.forEach(d => results.set(d.id, { id: d.id, ...d.data() } as UserProfile))
-
-  return Array.from(results.values())
-}
+/*
+ * searchUsers used to live here: a prefix query over displayName and email
+ * across every user in the system, backing an invite typeahead. One keystroke
+ * enumerated the directory, and it was the only reason the users collection had
+ * to be readable by any signed-in account.
+ *
+ * It is gone rather than moved server-side, because a global directory search
+ * leaks the same thing wherever it runs. Inviting works on an exact address —
+ * which is how invitations were always addressed — via getUserByEmail above.
+ */

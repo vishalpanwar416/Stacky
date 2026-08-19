@@ -52,8 +52,15 @@ service cloud.firestore {
       );
     }
 
+    // Your profile is yours. This was readable by any signed-in account so the
+    // invite typeahead could query it by name prefix — one keystroke enumerated
+    // every user's name and address. That search is gone; inviting resolves a
+    // single address through /api/user-lookup, which returns only an id.
+    //
+    // Nothing else read another user's profile: member rows and invitations
+    // carry the name and email they need.
     match /users/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isOwner(userId);
       allow write: if isOwner(userId);
     }
 
