@@ -100,9 +100,15 @@ check('  and that email was sent too', blockedBody.emailed === true, JSON.string
 const stored = await db.collection('invitations').doc(blockedBody.invitationId ?? 'x').get()
 check('  and the invitation exists', stored.exists)
 
-// --- duplicates ----------------------------------------------------------
+// --- inviting again re-sends, rather than refusing ------------------------
+// This used to assert 409. Refusing was correct and useless: re-inviting is
+// what people do when a message does not arrive.
 const dupe = await post(ownerToken, { workspaceId: ws.id, email: DELIVERABLE })
-check('duplicate invite refused', dupe.status === 409, `HTTP ${dupe.status}`)
+const dupeBody = await dupe.json()
+check('inviting again succeeds', dupe.status === 200, `HTTP ${dupe.status}`)
+check('  and is reported as a resend', dupeBody.resent === true, JSON.stringify(dupeBody))
+check('  without creating a second invitation', dupeBody.invitationId === goodBody.invitationId)
+check('  and records the delivery', dupeBody.emailed === true, JSON.stringify(dupeBody.emailError))
 
 // --- cleanup -------------------------------------------------------------
 for (const id of [goodBody.invitationId, blockedBody.invitationId]) {
