@@ -149,7 +149,9 @@ export default async function handler(req: any, res: any) {
   if (event === 'ping') return res.status(200).json({ ok: true, pong: true })
 
   const payload = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
-  const repo: string = payload.repository?.full_name ?? ''
+  // Lowercased to match how repo-link stores it: GitHub preserves the
+  // owner's chosen casing in full_name, so a verbatim lookup misses.
+  const repo: string = (payload.repository?.full_name ?? '').toLowerCase()
   if (!repo) return res.status(400).json({ error: 'No repository in payload.' })
 
   try {

@@ -18,7 +18,8 @@ if (!getApps().some((a) => a.name === 'repo-link')) {
   initializeApp({ projectId: 'stacky-f7f42' }, 'repo-link')
 }
 
-const docId = (repo: string) => repo.replace('/', '__')
+/** Repository names are case-insensitive; the stored key must be too. */
+const docId = (repo: string) => repo.toLowerCase().replace('/', '__')
 
 const WEBHOOK_URL = `${process.env.APP_URL ?? 'https://stackyy.vercel.app'}/api/github-webhook`
 
