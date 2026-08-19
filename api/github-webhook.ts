@@ -219,10 +219,17 @@ export default async function handler(req: any, res: any) {
 
     const valid = new Set(tasks.map((t) => t.id))
     const matches = (result?.matches ?? [])
+      // A task id that was not in the candidate list is a hallucination.
       .filter((m: any) => valid.has(m.taskId))
-      // A model that has not been told the change is merged should never be
-      // able to close a task anyway; enforce it rather than trust the prompt.
-      .filter((m: any) => !(m.suggestedStatus === 'done' && !change.merged))
+      // Unmerged work is not done, however finished the commit message sounds.
+      // This used to drop such matches, which threw away a correct match
+      // because its status was wrong — the relationship to the task is the
+      // valuable part, so correct the status and keep it.
+      .map((m: any) =>
+        m.suggestedStatus === 'done' && !change.merged
+          ? { ...m, suggestedStatus: 'in_progress', reason: `${m.reason} (not merged yet)` }
+          : m
+      )
 
     if (matches.length === 0) {
       return res.status(200).json({ ok: true, matched: 0 })
