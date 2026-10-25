@@ -170,7 +170,8 @@ export default async function handler(req: any, res: any) {
     if (!change) return res.status(200).json({ ok: true, skipped: 'nothing actionable in this event' })
 
     const apiKey = process.env.OPENROUTER_API_KEY
-    if (!apiKey) return res.status(500).json({ error: 'OPENROUTER_API_KEY is not configured.' })
+    // A 500 here would make GitHub retry an event that can never succeed.
+    if (!apiKey) return res.status(200).json({ ok: true, skipped: 'AI is not connected' })
 
     // Spend is charged to whoever linked the repository — the webhook has no
     // caller of its own, and an uncharged path would sit outside the cap.

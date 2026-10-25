@@ -16,6 +16,47 @@ import type { Project, Task, TaskPriority } from '../types'
 
 const INSIGHTS = 'aiInsights'
 
+/**
+ * Thrown when the AI backend can't be reached at all — no OpenRouter key on the
+ * server, or no /api route (plain `vite` dev doesn't serve one). Panels treat
+ * this as "not connected" rather than as a failure, and stop retrying.
+ */
+export class AiUnavailableError extends Error {
+  constructor(message = 'AI is not connected.') {
+    super(message)
+    this.name = 'AiUnavailableError'
+  }
+}
+
+export function isAiUnavailable(err: unknown): err is AiUnavailableError {
+  return err instanceof AiUnavailableError
+}
+
+/** POSTs to /api/ai, separating "AI isn't there" from a real request error. */
+async function postAi(token: string, body: unknown, fallbackError: string): Promise<unknown> {
+  let res: Response
+  try {
+    res = await fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    throw new AiUnavailableError('AI is not reachable right now.')
+  }
+
+  // A missing route answers 404 or with the SPA's HTML, never with JSON.
+  const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+  if (res.status === 404 || !isJson) throw new AiUnavailableError()
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    if (data.code === 'ai_not_configured') throw new AiUnavailableError()
+    throw new Error(data.error ?? `${fallbackError} (${res.status}).`)
+  }
+  return data
+}
+
 export interface PrioritySuggestion {
   taskId: string
   title: string
@@ -35,6 +76,8 @@ export interface AiAnalysis {
   generatedAt: string
   /** Fingerprint of the tasks this analysis was computed from. */
   fingerprint: string
+  /** Set when AI is unavailable and this is an older cached analysis. */
+  stale?: boolean
 }
 
 /** Tasks that are still actionable — done work is not worth spending tokens on. */
@@ -104,17 +147,7 @@ async function requestAnalysis(tasks: Task[], projects: Project[]): Promise<Omit
     estimatedMinutes: t.estimatedMinutes ?? null,
   }))
 
-  const res = await fetch('/api/ai', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ tasks: payload }),
-  })
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error ?? `Analysis failed (${res.status}).`)
-  }
-  return res.json()
+  return (await postAi(token, { tasks: payload }, 'Analysis failed')) as Omit<AiAnalysis, 'fingerprint'>
 }
 
 /**
@@ -134,7 +167,17 @@ export async function getAnalysis(
     if (cached && cached.fingerprint === fingerprint) return cached
   }
 
-  const fresh = await requestAnalysis(tasks, projects)
+  let fresh: Omit<AiAnalysis, 'fingerprint'>
+  try {
+    fresh = await requestAnalysis(tasks, projects)
+  } catch (err) {
+    // Without AI, an older analysis is still better than nothing.
+    if (isAiUnavailable(err)) {
+      const cached = await readCachedAnalysis(workspaceId).catch(() => null)
+      if (cached) return { ...cached, stale: true }
+    }
+    throw err
+  }
   const analysis: AiAnalysis = { ...fresh, fingerprint }
   // A cache write failure shouldn't lose the analysis the user just paid for.
   await writeCachedAnalysis(workspaceId, analysis).catch((err) =>
@@ -287,10 +330,9 @@ export async function getOverviewInsight(
   if (!options.force && history[0]?.fingerprint === fingerprint) return history[0]
 
   const token = await user.getIdToken()
-  const res = await fetch('/api/ai', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({
+  const data = await postAi(
+    token,
+    {
       mode: 'overview',
       metrics,
       // What we said last time, so the model reports the change rather than
@@ -302,14 +344,11 @@ export async function getOverviewInsight(
             summary: history[0].summary,
           }
         : null,
-    }),
-  })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error ?? `Could not read the dashboard (${res.status}).`)
-  }
+    },
+    'Could not read the dashboard'
+  )
 
-  const insight: OverviewInsight = { ...(await res.json()), fingerprint }
+  const insight: OverviewInsight = { ...(data as Omit<OverviewInsight, 'fingerprint'>), fingerprint }
 
   // Don't let a timed refresh that found nothing new push a real reading out of
   // the history — replace the last entry instead of stacking a duplicate.

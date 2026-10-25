@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   getOverviewInsight,
+  isAiUnavailable,
   readOverviewHistory,
   type OverviewInsight as Insight,
   type OverviewMetrics,
@@ -53,6 +54,9 @@ export function OverviewInsight({ metrics }: { metrics: OverviewMetrics | null }
   const [index, setIndex] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** AI isn't connected — keep showing past reads and stop the timed refresh. */
+  const [unavailable, setUnavailable] = useState(false)
+  const unavailableRef = useRef(false)
   /** Re-renders the "x minutes ago" label without refetching anything. */
   const [, setTick] = useState(0)
 
@@ -70,8 +74,15 @@ export function OverviewInsight({ metrics }: { metrics: OverviewMetrics | null }
       await getOverviewInsight(metricsRef.current, { force })
       setHistory(await readOverviewHistory())
       setIndex(0) // a fresh read is always what you want to see first
+      unavailableRef.current = false
+      setUnavailable(false)
     } catch (err) {
-      setError((err as Error).message)
+      if (isAiUnavailable(err)) {
+        unavailableRef.current = true
+        setUnavailable(true)
+      } else {
+        setError((err as Error).message)
+      }
     } finally {
       setLoading(false)
     }
@@ -99,7 +110,8 @@ export function OverviewInsight({ metrics }: { metrics: OverviewMetrics | null }
   // tab is hidden — a background tab should not be spending API calls.
   useEffect(() => {
     const id = setInterval(() => {
-      if (document.visibilityState === 'visible') void run(true)
+      // No point polling a backend that isn't there; Refresh still works.
+      if (document.visibilityState === 'visible' && !unavailableRef.current) void run(true)
     }, REFRESH_INTERVAL_MS)
     return () => clearInterval(id)
   }, [run])
@@ -200,6 +212,13 @@ export function OverviewInsight({ metrics }: { metrics: OverviewMetrics | null }
           <div className="skeleton h-3 w-full rounded" />
           <div className="skeleton h-3 w-4/5 rounded" />
         </div>
+      )}
+
+      {unavailable && !loading && (
+        <p className="mb-2 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+          AI isn't connected
+          {insight ? ' — this is the last read, which may be out of date.' : ', so there is no read yet.'}
+        </p>
       )}
 
       {error && (
