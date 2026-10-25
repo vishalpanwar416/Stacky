@@ -8,6 +8,7 @@ import {
   fingerprintAfterApplying,
   fingerprintTasks,
   getAnalysis,
+  isAiUnavailable,
   openTasks,
   resolveSuggestions,
   setAutoApply,
@@ -44,6 +45,8 @@ export function AiFocusPanel({ workspaceId, tasks, projects, userId }: Props) {
   const [analysis, setAnalysis] = useState<AiAnalysis | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** AI isn't connected — shown as a quiet note, not as a failure. */
+  const [unavailable, setUnavailable] = useState(false)
   const [busyIds, setBusyIds] = useState<string[]>([])
   const [autoApply, setAutoApplyState] = useState(autoApplyEnabled)
 
@@ -65,9 +68,11 @@ export function AiFocusPanel({ workspaceId, tasks, projects, userId }: Props) {
       try {
         const result = await getAnalysis(workspaceId, tasks, projects, { force })
         setAnalysis(result)
+        setUnavailable(Boolean(result.stale))
 
-        // Auto-apply only ever touches high-confidence suggestions.
-        if (autoApplyEnabled()) {
+        // Auto-apply only ever touches high-confidence suggestions, and never
+        // ones from an out-of-date analysis.
+        if (autoApplyEnabled() && !result.stale) {
           const auto = autoApplicable(result.suggestions)
           if (auto.length > 0) {
             skipNextRun.current = true
@@ -88,7 +93,8 @@ export function AiFocusPanel({ workspaceId, tasks, projects, userId }: Props) {
           }
         }
       } catch (err) {
-        setError((err as Error).message)
+        if (isAiUnavailable(err)) setUnavailable(true)
+        else setError((err as Error).message)
       } finally {
         setLoading(false)
       }
@@ -214,6 +220,22 @@ export function AiFocusPanel({ workspaceId, tasks, projects, userId }: Props) {
           <div className="h-4 w-2/3 animate-pulse rounded theme-surface-bg" />
           <div className="h-3 w-full animate-pulse rounded theme-surface-bg" />
           <div className="h-3 w-4/5 animate-pulse rounded theme-surface-bg" />
+        </div>
+      )}
+
+      {unavailable && !loading && (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-2xl theme-surface-bg px-4 py-3 text-sm theme-text-muted">
+          <span>
+            AI isn't connected
+            {analysis ? ' — showing the last analysis, which may be out of date.' : ', so there are no suggestions yet.'}
+          </span>
+          <button
+            type="button"
+            onClick={() => void run(true)}
+            className="shrink-0 rounded-lg px-2 py-1 text-xs font-medium hover:theme-text"
+          >
+            Try again
+          </button>
         </div>
       )}
 

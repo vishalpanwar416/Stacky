@@ -201,6 +201,19 @@ function normaliseChange(claimed: unknown, hadPrevious: boolean): string {
   return value === 'first' ? 'unchanged' : value
 }
 
+/**
+ * OpenRouter refused the key itself (revoked, wrong, or out of credit). That is
+ * "AI not connected" to the user, not a transient failure worth retrying.
+ */
+class ProviderAuthError extends Error {}
+
+/** Same 503 + code as a missing key, so the client shows "not connected". */
+function notConnected(res: any) {
+  return res
+    .status(503)
+    .json({ error: 'AI is not connected on this server.', code: 'ai_not_configured' })
+}
+
 /** One place that talks to OpenRouter, so both modes share the token cap. */
 async function askModel(
   apiKey: string,
@@ -229,6 +242,9 @@ async function askModel(
   if (!upstream.ok) {
     const detail = await upstream.text()
     console.error('OpenRouter error', upstream.status, detail.slice(0, 500))
+    if ([401, 402, 403].includes(upstream.status)) {
+      throw new ProviderAuthError(`The model provider returned ${upstream.status}.`)
+    }
     throw new Error(`The model provider returned ${upstream.status}.`)
   }
   const payload = (await upstream.json()) as any
@@ -246,7 +262,7 @@ export default async function handler(req: any, res: any) {
 
   const apiKey = process.env.OPENROUTER_API_KEY
   if (!apiKey) {
-    return res.status(500).json({ error: 'OPENROUTER_API_KEY is not configured on the server.' })
+    return notConnected(res)
   }
 
   // 1. Authenticate. Without this the route is an open, uncapped spend endpoint.
@@ -302,6 +318,7 @@ export default async function handler(req: any, res: any) {
       })
     } catch (err) {
       console.error('Overview read failed', err)
+      if (err instanceof ProviderAuthError) return notConnected(res)
       return res.status(502).json({ error: (err as Error).message })
     }
   }
@@ -366,6 +383,7 @@ export default async function handler(req: any, res: any) {
     })
   } catch (err) {
     console.error('AI route failed', err)
+    if (err instanceof ProviderAuthError) return notConnected(res)
     return res.status(500).json({ error: 'Analysis failed. Try again in a moment.' })
   }
 }
